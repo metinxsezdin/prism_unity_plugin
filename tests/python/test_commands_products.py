@@ -110,7 +110,8 @@ class ProductCommandTests(unittest.TestCase):
     def test_check_versions_marks_outdated(self):
         records = [{"id": "Props__Lotus__lotus_model", "entity": LOTUS, "product": "lotus_model", "version": "v0001"}]
         result = self.call("checkVersions", records=records)["result"]
-        self.assertEqual(result, [{"id": "Props__Lotus__lotus_model", "current": "v0001", "latest": "v0003"}])
+        self.assertEqual(result, [{"id": "Props__Lotus__lotus_model", "current": "v0001", "latest": "v0003",
+                                   "entity": LOTUS, "product": "lotus_model"}])
 
     def test_check_versions_up_to_date_empty(self):
         records = [{"id": "Props__Lotus__lotus_model", "entity": LOTUS, "product": "lotus_model", "version": "v0003"}]

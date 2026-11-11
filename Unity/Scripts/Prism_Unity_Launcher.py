@@ -102,6 +102,13 @@ def main():
     # Pin the project for this Unity project only; leave the user's global choice alone.
     pin_project(pcore, prism_project)
 
+    if env.get("PRISM_UNITY_FAIL_ON_DIALOG") == "1":
+        from qtpy.QtWidgets import QDialog, QMessageBox
+
+        from unity_bridge.testhooks import install_fail_on_dialog
+
+        install_fail_on_dialog(QDialog, QMessageBox)
+
     unity = UnityClient(int(env["PRISM_UNITY_PORT"]), env["PRISM_UNITY_TOKEN"])
     pcore.appPlugin.unity = unity
     commands = PrismCommands(pcore, unity)

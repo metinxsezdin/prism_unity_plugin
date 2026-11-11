@@ -19,6 +19,20 @@ def describe_changes(details):
     return "\n".join(lines)
 
 
+def import_args(cmds, entity, product, version, record_id=None):
+    """Arguments for Unity's importProduct/updateProduct, with the version already resolved.
+
+    Unity must not call back into Prism while Prism's main thread waits for it, so Prism
+    resolves the file first and sends it along.
+    """
+    args = {"version": version, "resolved": cmds.resolveVersion(entity, product, version)}
+    if record_id:
+        args["recordId"] = record_id
+    else:
+        args.update(entity=entity, product=product)
+    return args
+
+
 def run_import(cmds, cmd, args):
     """Ask Unity to import/update; on a breaking change, show the diff and ask once."""
     try:
@@ -54,12 +68,16 @@ def open_import_browser(cmds):
 
     def on_path(path):
         data = cmds.core.products.getProductDataFromFilepath(path) or {}
-        args = {
-            "entity": entity_from_product_data(data),
-            "product": data.get("product"),
-            "version": data.get("version") or "latest",
-        }
-        QTimer.singleShot(0, lambda: run_import(cmds, "importProduct", args))
+
+        def go():
+            try:
+                args = import_args(cmds, entity_from_product_data(data), data.get("product"), data.get("version") or "latest")
+            except BridgeError as e:
+                cmds.core.popup(e.message, title="Prism → Unity")
+                return
+            run_import(cmds, "importProduct", args)
+
+        QTimer.singleShot(0, go)
 
     browser.productPathSet.connect(on_path)
     browser.closing.connect(lambda: _open_windows.remove(browser) if browser in _open_windows else None)
@@ -95,7 +113,12 @@ def open_check_versions(cmds, outdated):
             item = items.item(i)
             if item.checkState() == Qt.Checked:
                 entry = item.data(Qt.UserRole)
-                run_import(cmds, "updateProduct", {"recordId": entry["id"], "version": entry["latest"]})
+                try:
+                    args = import_args(cmds, entry["entity"], entry["product"], entry["latest"], record_id=entry["id"])
+                except BridgeError as e:
+                    cmds.core.popup(e.message, title="Prism → Unity")
+                    continue
+                run_import(cmds, "updateProduct", args)
         dlg.close()
 
     update.clicked.connect(do_update)

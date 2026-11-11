@@ -79,10 +79,27 @@ namespace Prism.Unity.Editor
             }
         }
 
+        /// <summary>Drop the handle of a Prism process that has already exited, so it can be started again.</summary>
+        public static void ForgetExitedProcess()
+        {
+            lock (Lock)
+                if (_owned != null && _owned.HasExited) _owned = null;
+        }
+
         /// <summary>Test hook: forget the process started by this domain (it keeps running).</summary>
         public static void ForgetRunningProcess()
         {
             lock (Lock) _owned = null;
+        }
+
+        /// <summary>Test hook: simulate a Prism crash (kill without waiting for exit).</summary>
+        public static void KillOwnedWithoutWaiting()
+        {
+            lock (Lock)
+            {
+                try { if (_owned != null && !_owned.HasExited) _owned.Kill(); }
+                catch (System.InvalidOperationException) { }
+            }
         }
 
         /// <summary>Stops the Prism process this domain started (used by tests).</summary>
@@ -93,7 +110,10 @@ namespace Prism.Unity.Editor
                 try
                 {
                     if (_owned != null && !_owned.HasExited)
+                    {
                         _owned.Kill();
+                        _owned.WaitForExit(10000); // release the port and mutex before anyone reconnects
+                    }
                 }
                 catch (System.InvalidOperationException) { }
                 _owned = null;

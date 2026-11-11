@@ -50,6 +50,34 @@ namespace Prism.Unity.Editor
                 SessionState.SetInt(FpsKey, fps);
                 return true;
             }, false);
+            RegisterImport();
+        }
+
+        // Prism's import windows call these with the version already resolved (args.resolved):
+        // Prism waits for the answer on its main thread, so Unity must not call back into Prism.
+        static void RegisterImport()
+        {
+            CommandRegistry.Register("importProduct", (a, c) =>
+            {
+                var entity = RequireEntity(a);
+                var product = RequireString(a, "product");
+                var result = ProductImporter.ImportResolved(entity, product, RequireResolved(a), (bool?)a["confirm"] ?? false);
+                return JObject.FromObject(result);
+            }, true);
+            CommandRegistry.Register("updateProduct", (a, c) =>
+            {
+                var record = PrismApi.RequireRecord(RequireString(a, "recordId"));
+                var result = ProductImporter.ImportResolved(record.Entity, record.Product, RequireResolved(a), (bool?)a["confirm"] ?? false);
+                return JObject.FromObject(result);
+            }, true);
+            CommandRegistry.Register("listImported", (a, c) => JArray.FromObject(ImportRecord.LoadAll()), false);
+        }
+
+        static ResolvedVersion RequireResolved(JObject a)
+        {
+            if (!(a?["resolved"] is JObject r) || r["filepath"] == null)
+                throw new PrismCommandException(ErrorCodes.BadArgs, "Missing 'resolved' {version, filepath, location} from Prism.");
+            return r.ToObject<ResolvedVersion>();
         }
 
         public static int RequireInt(JObject a, string name)

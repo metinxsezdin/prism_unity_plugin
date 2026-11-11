@@ -63,6 +63,17 @@ class DialogFlowTests(unittest.TestCase):
         self.assertIsNone(dialogs.run_import(cmds, "importProduct", {}))
         self.assertEqual(cmds.core.popups, ["M: is offline"])
 
+    def test_import_args_carry_resolved_version(self):
+        class Resolving(Cmds):
+            def resolveVersion(self, entity, product, version="latest"):
+                return {"version": "v0002", "filepath": "C:/p/v0002/lotus_v2.fbx", "location": "global"}
+
+        cmds = Resolving(AnswerCore(dialogs.CANCEL), ScriptedUnity({"updated": False}))
+        args = dialogs.import_args(cmds, {"type": "asset", "asset_path": "Props/Lotus"}, "lotus_model", "v0002")
+        self.assertEqual(args["resolved"]["filepath"], "C:/p/v0002/lotus_v2.fbx")
+        self.assertEqual(args["product"], "lotus_model")
+        self.assertEqual(args["version"], "v0002")
+
     def test_entity_from_product_data(self):
         data = {"type": "asset", "asset_path": "Props/Lotus", "product": "lotus_model", "version": "v0002", "user": "adm"}
         self.assertEqual(dialogs.entity_from_product_data(data), {"type": "asset", "asset_path": "Props/Lotus"})

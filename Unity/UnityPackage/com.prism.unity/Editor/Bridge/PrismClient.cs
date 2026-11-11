@@ -45,13 +45,23 @@ namespace Prism.Unity.Editor
             {
                 return Call(ctx.Session, cmd, args, interactive, timeout);
             }
-            catch (SocketException)
+            catch (Exception e) when (PrismWentAway(e))
             {
-                // Nobody listens on the Prism port: start Prism (once) and retry.
+                // Nobody listens on the Prism port, or Prism died mid-call: start Prism (once) and retry.
+                PrismProcess.ForgetExitedProcess();
                 PrismProcess.EnsureRunning(ctx);
                 WaitUntilReady(ctx);
                 return Call(ctx.Session, cmd, args, interactive, timeout);
             }
+        }
+
+        /// <summary>Refused, or accepted and then reset (a Prism process that is exiting).</summary>
+        static bool PrismWentAway(Exception e)
+        {
+            if (e is SocketException) return true;
+            if (e is IOException io && io.InnerException is SocketException se)
+                return se.SocketErrorCode == SocketError.ConnectionReset || se.SocketErrorCode == SocketError.ConnectionAborted;
+            return false;
         }
 
         static void WaitUntilReady(LaunchContext ctx)
@@ -64,8 +74,7 @@ namespace Prism.Unity.Editor
                     Call(ctx.Session, "ping", null, false, TimeSpan.FromSeconds(5));
                     return;
                 }
-                catch (SocketException) { }
-                catch (IOException) { }
+                catch (Exception e) when (PrismWentAway(e) || e is IOException) { }
                 if (!PrismProcess.IsRunning() && PrismProcess.HasOwnedExitedWithError(out var code))
                     throw new PrismCommandException(ErrorCodes.PrismUnavailable, $"Prism exited during startup (exit code {code}).");
                 Thread.Sleep(500);

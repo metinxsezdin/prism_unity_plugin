@@ -24,5 +24,18 @@ namespace Prism.Unity.Editor.Tests.E2E
             StringAssert.StartsWith("v2.", (string)result["prismVersion"]);
             Assert.IsNotNull(result["checkImportVersions"]);
         }
+
+        [UnityTest]
+        public IEnumerator PrismRestartsAfterCrash()
+        {
+            var first = PrismClient.SendAsync("ping", null, interactive: false, timeout: System.TimeSpan.FromSeconds(30));
+            yield return Support.E2EWait.For(first, 120);
+
+            PrismProcess.KillOwnedWithoutWaiting(); // like a crash: the port may still accept for a moment
+
+            var second = PrismClient.SendAsync("ping", null, interactive: false, timeout: System.TimeSpan.FromSeconds(30));
+            yield return Support.E2EWait.For(second, 120);
+            StringAssert.StartsWith("v2.", (string)second.Result["prismVersion"]);
+        }
     }
 }

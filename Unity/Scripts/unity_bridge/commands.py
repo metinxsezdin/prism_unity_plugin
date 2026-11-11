@@ -113,7 +113,8 @@ class PrismCommands(object):
             except BridgeError:
                 continue  # unreachable products are reported by the import itself, not here
             if latest != record.get("version"):
-                outdated.append({"id": record["id"], "current": record.get("version"), "latest": latest})
+                outdated.append({"id": record["id"], "current": record.get("version"), "latest": latest,
+                                 "entity": record["entity"], "product": record["product"]})
         return outdated
 
     def importDialog(self):
