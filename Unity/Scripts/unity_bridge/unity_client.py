@@ -1,6 +1,7 @@
 """Prism → Unity calls over the loopback bridge."""
 
 import socket
+import time
 
 from . import protocol
 from .endpoint import read_unity_endpoint
@@ -10,11 +11,12 @@ HOST = "127.0.0.1"
 
 
 class UnityClient(object):
-    def __init__(self, port, token, timeout=10.0, project=None):
+    def __init__(self, port, token, timeout=10.0, project=None, reload_wait=20.0):
         self.port = int(port)
         self.token = token
         self.timeout = timeout
         self.project = project  # Unity project root: follow its session.json when set
+        self.reload_wait = reload_wait  # Unity's server is down while it compiles scripts
 
     def _refresh_endpoint(self):
         if self.project:
@@ -35,12 +37,7 @@ class UnityClient(object):
         # calls (playblast, big imports, scene saves) are not cut off on the Unity side.
         args = dict(args or {}, _timeoutSec=timeout)
         request = protocol.make_request(cmd, args, self.token, interactive)
-        try:
-            # Windows retries refused loopback connects for ~2 s, so a connect-phase
-            # timeout means "nobody is listening", not "Unity is busy".
-            sock = socket.create_connection((HOST, self.port), timeout=min(timeout, 5.0))
-        except OSError as e:
-            raise BridgeError("internal", "Unity editor is not reachable on port %s (%s)." % (self.port, e))
+        sock = self._connect(timeout)
         try:
             with sock:
                 sock.settimeout(timeout)
@@ -59,6 +56,23 @@ class UnityClient(object):
         error = response.get("error") or {}
         code = error.get("code") if error.get("code") in protocol.ERROR_CODES else "internal"
         raise BridgeError(code, error.get("message", ""), error.get("details"))
+
+    def _connect(self, timeout):
+        """Connect, retrying while Unity reloads its scripts (its server is briefly down)."""
+        give_up = time.monotonic() + self.reload_wait
+        while True:
+            try:
+                # Windows retries refused loopback connects for ~2 s, so a connect-phase
+                # timeout means "nobody is listening", not "Unity is busy with the request".
+                return socket.create_connection((HOST, self.port), timeout=min(timeout, 2.0))
+            except OSError:
+                if time.monotonic() >= give_up:
+                    raise BridgeError(
+                        "unity_busy",
+                        "Unity is not answering (it may be compiling scripts or closed). Try again in a moment.",
+                    )
+                time.sleep(0.5)
+                self._refresh_endpoint()  # the reloaded editor may listen on a new port
 
     @staticmethod
     def _read_line(sock):

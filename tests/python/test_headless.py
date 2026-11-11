@@ -6,14 +6,14 @@ from unity_bridge.protocol import BridgeError
 
 
 class HeadlessTests(unittest.TestCase):
-    def test_headless_popup_raises_needs_input(self):
+    def test_headless_popup_raises_instead_of_showing(self):
         core = FakeCore()
         original_popup = core.popup
         with self.assertRaises(BridgeError) as ctx:
             with headless(core):
                 self.assertIn("silent", core.prismArgs)
                 core.popup("Did you save it using Prism?")
-        self.assertEqual(ctx.exception.code, "needs_input")
+        self.assertEqual(ctx.exception.code, "internal")
         self.assertIn("Did you save it using Prism?", ctx.exception.message)
         self.assertNotIn("silent", core.prismArgs)
         self.assertEqual(core.popup, original_popup)

@@ -25,6 +25,14 @@ if HERE not in sys.path:
 from unity_bridge.headless import instance_key  # noqa: E402
 
 MUTEX_PREFIX = "Local\\PrismUnity_"
+EXIT_PROJECT_UNREACHABLE = 3
+
+
+def check_prism_project(config_path):
+    """Error text when the pinned Prism project cannot be read (e.g. its drive is offline)."""
+    if config_path and not os.path.isfile(config_path):
+        return "The Prism project of this Unity project is not reachable: %s" % config_path
+    return None
 
 
 def acquire_single_instance(unity_project):
@@ -50,6 +58,13 @@ def main():
     mutex = acquire_single_instance(unity_project)
     if mutex is None:
         return 0  # Unity talks to the running instance over its port.
+
+    prism_project = env.get("PRISM_UNITY_PRISM_PROJECT", "")
+    problem = check_prism_project(prism_project)
+    if problem:
+        # Exit before Prism starts: it would otherwise show a project dialog nobody may be there to answer.
+        sys.stderr.write(problem + "\n")
+        return EXIT_PROJECT_UNREACHABLE
 
     prism_root = env.get("PRISM_ROOT") or r"C:\Program Files\Prism2"
     sys.path.insert(0, os.path.join(prism_root, "Scripts"))
@@ -97,8 +112,8 @@ def main():
     qapp = QApplication.instance() or QApplication(sys.argv)
     qapp.setQuitOnLastWindowClosed(False)
 
-    prism_project = env.get("PRISM_UNITY_PRISM_PROJECT", "")
-    prism_args = ["noProjectBrowser", "splash"] if prism_project else ["loadProject", "noProjectBrowser", "splash"]
+    # No splash: Prism may be started by a Claude call with nobody watching.
+    prism_args = ["noProjectBrowser"] if prism_project else ["loadProject", "noProjectBrowser"]
     pcore = PrismCore.create(app="Unity", prismArgs=prism_args)
     # Pin the project for this Unity project only; leave the user's global choice alone.
     pin_project(pcore, prism_project)

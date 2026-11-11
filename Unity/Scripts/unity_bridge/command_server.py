@@ -3,12 +3,15 @@
 import hmac
 import socket
 import threading
+import time
 import traceback
 
 from . import protocol
 from .protocol import BridgeError
 
 HOST = "127.0.0.1"
+MAX_LINE_BYTES = 4 * 1024 * 1024  # one request; anything longer is not ours
+IDLE_TIMEOUT_SEC = 300
 
 
 class CommandServer(object):
@@ -53,8 +56,18 @@ class CommandServer(object):
 
     def _serve(self, conn):
         with conn:
+            conn.settimeout(IDLE_TIMEOUT_SEC)
             reader = conn.makefile("rb")
-            for line in reader:
+            while True:
+                try:
+                    line = reader.readline(MAX_LINE_BYTES + 1)
+                except (OSError, ValueError):
+                    return
+                if not line:
+                    return
+                if len(line) > MAX_LINE_BYTES and not line.endswith(b"\n"):
+                    conn.sendall(protocol.encode(protocol.err(None, "bad_request", "Request is too long.")))
+                    return
                 if not line.strip():
                     continue
                 conn.sendall(protocol.encode(self._respond(line)))
@@ -65,10 +78,24 @@ class CommandServer(object):
         except BridgeError as e:
             return e.to_response(None)
         request_id = msg.get("id")
-        if not isinstance(msg.get("token"), str) or not hmac.compare_digest(msg["token"], self.token):
+        token = msg.get("token")
+        if not isinstance(token, str) or not hmac.compare_digest(token.encode("utf-8"), self.token.encode("utf-8")):
             return protocol.err(request_id, "bad_token", "Invalid session token.")
+        args = msg.get("args") if isinstance(msg.get("args"), dict) else {}
         try:
-            return self.run_on_main(lambda: self.handle(msg))
+            limit = float(args.get("_timeoutSec")) if args.get("_timeoutSec") is not None else None
+        except (TypeError, ValueError):
+            limit = None
+        deadline = time.monotonic() + limit if limit else None
+
+        def job():
+            # The caller stops waiting at its deadline; a request still queued by then must not run.
+            if deadline is not None and time.monotonic() > deadline:
+                raise BridgeError("timeout", "The request waited too long for Prism and was dropped.")
+            return self.handle(msg)
+
+        try:
+            return self.run_on_main(job)
         except BridgeError as e:
             return e.to_response(request_id)
         except Exception as e:

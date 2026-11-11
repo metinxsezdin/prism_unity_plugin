@@ -58,8 +58,8 @@ class UnityClientTests(unittest.TestCase):
         with FakeLineServer(lambda m: None) as srv:
             port = srv.port
         with self.assertRaises(BridgeError) as ctx:
-            UnityClient(port, "tok", timeout=1.0).call("ping")
-        self.assertEqual(ctx.exception.code, "internal")
+            UnityClient(port, "tok", timeout=1.0, reload_wait=0.5).call("ping")
+        self.assertEqual(ctx.exception.code, "unity_busy")
         self.assertIn("Unity", ctx.exception.message)
 
     def test_two_clients_two_servers_no_crosstalk(self):

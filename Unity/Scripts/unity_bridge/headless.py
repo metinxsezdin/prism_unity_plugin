@@ -20,7 +20,32 @@ def headless(core):
     if added_silent:
         core.prismArgs.append("silent")
     def refuse(text, *args, **kwargs):
+        # A question only the user can answer.
         raise BridgeError("needs_input", str(text), {"dialog": str(kwargs.get("title") or "")})
+
+    def notice(text, *args, **kwargs):
+        # popup() shows errors and notices ("Could not create this folder"); asking the user
+        # for input would not help, so report them as failures.
+        raise BridgeError("internal", str(text), {"dialog": str(kwargs.get("title") or "")})
+
+    def ensure_user(*args, **kwargs):
+        if getattr(core, "user", None) or getattr(core, "username", None):
+            return True
+        raise BridgeError("needs_input", "No Prism user name is set. Open Prism once and set your user name.",
+                          {"missing": ["prismUser"]})
+
+    def ensure_project(*args, **kwargs):
+        if getattr(core, "prismIni", None):
+            return True
+        raise BridgeError("needs_input", "No Prism project is active for this Unity project.", {"missing": ["prismProject"]})
+
+    # Dialogs Prism opens itself (user name, project picker) are patched on their owner objects.
+    sub_patches = []
+    for owner_name, method, fn in (("users", "ensureUser", ensure_user), ("projects", "ensureProject", ensure_project)):
+        owner = getattr(core, owner_name, None)
+        if owner is not None and hasattr(owner, method):
+            sub_patches.append((owner, method, method in vars(owner), getattr(owner, method)))
+            setattr(owner, method, fn)
 
     def surface_error(text, *args, **kwargs):
         # Prism's err_catcher swallows exceptions and reports them through
@@ -30,7 +55,7 @@ def headless(core):
             raise current
         raise BridgeError("internal", str(text).strip().splitlines()[-1] if str(text).strip() else "Prism error")
 
-    patches = {"popup": refuse, "popupQuestion": refuse}
+    patches = {"popup": notice, "popupQuestion": refuse}
     if hasattr(core, "writeErrorLog"):
         patches["writeErrorLog"] = surface_error
     saved = {name: (name in vars(core), getattr(core, name)) for name in patches}
@@ -47,6 +72,11 @@ def headless(core):
                 setattr(core, name, original)
             else:
                 delattr(core, name)
+        for owner, method, was_instance_attr, original in sub_patches:
+            if was_instance_attr:
+                setattr(owner, method, original)
+            else:
+                delattr(owner, method)
         if added_silent and "silent" in core.prismArgs:
             core.prismArgs.remove("silent")
 
