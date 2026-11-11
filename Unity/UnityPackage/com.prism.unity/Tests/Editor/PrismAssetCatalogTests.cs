@@ -5,12 +5,6 @@ using UnityEngine;
 
 namespace Prism.Unity.Editor.Tests
 {
-    /// <summary>A team-defined definition class, as the team would write in its own assembly.</summary>
-    public class TestItemDefinition : PrismAssetDefinition
-    {
-        public int unlockLevel;
-    }
-
     public class PrismAssetCatalogTests
     {
         static T Def<T>(string entityPath, string product) where T : PrismAssetDefinition
