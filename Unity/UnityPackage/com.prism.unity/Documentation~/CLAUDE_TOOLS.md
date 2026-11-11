@@ -14,10 +14,12 @@ products, save and open scene versions, and publish playblasts. None of them eve
 
 ## Results and errors
 
-Every tool answers one of two shapes:
+Through Unity MCP every tool answers one of two shapes:
 
-- **Success:** `{"ok": true, "result": ...}`
-- **Failure:** `{"ok": false, "error": {"code", "message", "details"}}`
+- **Success:** `{"success": true, "message", "data": <result>}`
+- **Failure:** `{"success": false, "code", "error": "<code>: <message>", "data": <details>}`
+
+The C# API `PrismMcpTools.Invoke` uses the same content as `{"ok", "result"}` / `{"ok": false, "error": {"code", "message", "details"}}`.
 
 | code | meaning | what Claude does |
 |---|---|---|

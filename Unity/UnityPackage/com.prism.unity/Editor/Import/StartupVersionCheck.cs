@@ -17,7 +17,7 @@ namespace Prism.Unity.Editor
         {
             if (Application.isBatchMode || SessionState.GetBool(DoneKey, false))
                 return;
-            EditorApplication.delayCall += Run;
+            MainThreadDispatcher.Defer(Run);
         }
 
         static void Run()
@@ -29,8 +29,8 @@ namespace Prism.Unity.Editor
             {
                 if (t.IsFaulted || !((bool?)t.Result?["checkImportVersions"] ?? false))
                     return;
-                EditorApplication.delayCall += () =>
-                    PrismClient.SendAsync("checkVersionsDialog", new JObject { ["quiet"] = true }, interactive: true);
+                MainThreadDispatcher.Defer(() =>
+                    PrismClient.SendAsync("checkVersionsDialog", new JObject { ["quiet"] = true }, interactive: true));
             });
         }
     }

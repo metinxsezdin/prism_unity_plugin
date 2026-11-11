@@ -24,11 +24,11 @@ namespace Prism.Unity.Editor
                 if (!t.IsFaulted) return;
                 var e = t.Exception.GetBaseException();
                 var message = e is PrismCommandException p ? $"{p.Message} ({p.Code})" : e.Message;
-                EditorApplication.delayCall += () =>
+                MainThreadDispatcher.Defer(() =>
                 {
                     Debug.LogError($"[Prism] {cmd} failed: {message}");
                     EditorUtility.DisplayDialog("Prism", message, "OK");
-                };
+                });
             });
         }
     }

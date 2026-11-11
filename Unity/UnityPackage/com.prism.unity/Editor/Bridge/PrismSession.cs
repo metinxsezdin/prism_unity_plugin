@@ -42,7 +42,7 @@ namespace Prism.Unity.Editor
         {
             AssemblyReloadEvents.beforeAssemblyReload += Shutdown;
             EditorApplication.quitting += Shutdown;
-            EditorApplication.delayCall += () => EnsureStarted();
+            MainThreadDispatcher.Defer(() => EnsureStarted());
         }
 
         public static bool IsPlaying() => PlayModeOverride ?? EditorApplication.isPlayingOrWillChangePlaymode;

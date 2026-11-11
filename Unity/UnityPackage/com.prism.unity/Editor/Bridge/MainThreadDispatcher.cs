@@ -12,14 +12,38 @@ namespace Prism.Unity.Editor
     {
         static readonly ConcurrentQueue<Action> Queue = new ConcurrentQueue<Action>();
         static readonly int MainThreadId;
+        static readonly SynchronizationContext MainContext;
 
         static MainThreadDispatcher()
         {
             MainThreadId = Thread.CurrentThread.ManagedThreadId;
-            EditorApplication.update += Pump;
+            MainContext = SynchronizationContext.Current;
+            EditorApplication.update += Pump; // fallback when no context was captured
         }
 
         public static bool IsMainThread => Thread.CurrentThread.ManagedThreadId == MainThreadId;
+
+        public static bool HasMainThreadContext => MainContext != null;
+
+        /// <summary>
+        /// Run action on the main thread soon. Unlike EditorApplication.delayCall (which is not drained
+        /// while Unity is in the background), this posts to the main SynchronizationContext and wakes
+        /// the editor loop, so it also runs promptly when another app has focus.
+        /// </summary>
+        public static void Defer(Action action)
+        {
+            Queue.Enqueue(action);
+            Wake();
+        }
+
+        static void Wake()
+        {
+            MainContext?.Post(_ =>
+            {
+                Pump();
+                EditorApplication.QueuePlayerLoopUpdate();
+            }, null);
+        }
 
         /// <summary>
         /// Queue fn for the main thread. The returned task faults with TimeoutException when
@@ -40,6 +64,7 @@ namespace Prism.Unity.Editor
                 try { tcs.TrySetResult(fn()); }
                 catch (Exception e) { tcs.TrySetException(e); }
             });
+            Wake();
             return WithTimeout(tcs.Task, timeout);
         }
 

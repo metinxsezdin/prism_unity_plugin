@@ -10,15 +10,41 @@ namespace Prism.Unity.Editor.Mcp
     /// when com.unity.ai.assistant is installed (asmdef versionDefines → PRISM_UNITY_AI_MCP).
     /// </summary>
     [InitializeOnLoad]
-    static class PrismMcpRegistration
+    public static class PrismMcpRegistration
     {
-        static PrismMcpRegistration() => EditorApplication.delayCall += RegisterAll;
-
-        static void RegisterAll()
+        static PrismMcpRegistration()
         {
+            UnityEngine.Debug.Log("[Prism] MCP adapter loaded.");
+            // McpToolRegistry.RefreshTools() drops dynamically registered tools, and the bridge refreshes
+            // after startup in the interactive editor, so register again after every refresh.
+            McpToolRegistry.ToolsChanged += e =>
+            {
+                if (e.ChangeType == McpToolRegistry.ToolChangeType.Refreshed)
+                    MainThreadDispatcher.Defer(RegisterAll);
+            };
+            MainThreadDispatcher.Defer(RegisterAll);
+        }
+
+        [MenuItem("Prism/Debug/Register MCP Tools", priority = 200)]
+        static void RegisterFromMenu() => RegisterAll();
+
+        public static void RegisterAll()
+        {
+            var registered = 0;
             foreach (var tool in PrismMcpTools.Tools)
-                McpToolRegistry.RegisterTool(tool.Name, new PrismMcpTool(tool), tool.Description,
-                    enabledByDefault: true, groups: new[] { "Prism" });
+            {
+                try
+                {
+                    McpToolRegistry.RegisterTool(tool.Name, new PrismMcpTool(tool), tool.Description,
+                        enabledByDefault: true, groups: new[] { "Prism" });
+                    registered++;
+                }
+                catch (System.Exception e)
+                {
+                    UnityEngine.Debug.LogError($"[Prism] Could not register MCP tool {tool.Name}: {e}");
+                }
+            }
+            UnityEngine.Debug.Log($"[Prism] Registered {registered} MCP tools.");
         }
     }
 
@@ -31,7 +57,22 @@ namespace Prism.Unity.Editor.Mcp
         public async Task<object> ExecuteAsync(object parameters)
         {
             var args = parameters as JObject ?? (parameters == null ? new JObject() : JObject.FromObject(parameters));
-            return await PrismMcpTools.Invoke(_spec.Name, args);
+            return ToBridgeShape(_spec.Name, await PrismMcpTools.Invoke(_spec.Name, args));
+        }
+
+        /// <summary>The bridge reads {success, message, data} / {success:false, code, error, data}.</summary>
+        internal static JObject ToBridgeShape(string tool, JObject envelope)
+        {
+            if ((bool?)envelope["ok"] == true)
+                return new JObject { ["success"] = true, ["message"] = $"{tool} succeeded", ["data"] = envelope["result"] };
+            var error = (JObject)envelope["error"] ?? new JObject();
+            return new JObject
+            {
+                ["success"] = false,
+                ["code"] = error["code"],
+                ["error"] = $"{error["code"]}: {error["message"]}",
+                ["data"] = error["details"] ?? new JObject(),
+            };
         }
 
         public object GetInputSchema() => _spec.InputSchema;
