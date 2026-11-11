@@ -219,11 +219,15 @@ class PrismCommands(object):
         outdated = []
         for record in records:
             try:
-                latest = self.resolveVersion(record["entity"], record["product"])["version"]
+                latest = self.resolveVersion(record["entity"], record["product"])
             except BridgeError:
                 continue  # unreachable products are reported by the import itself, not here
-            if latest != record.get("version"):
-                outdated.append({"id": record["id"], "current": record.get("version"), "latest": latest,
+            # Compare what the files contain: "master" is a copy of a numbered version, and Unity
+            # holds a copy of that copy, so it is outdated when master moves on.
+            current_content = record.get("contentVersion") or record.get("version")
+            if latest["contentVersion"] != current_content:
+                outdated.append({"id": record["id"], "current": record.get("version"), "latest": latest["version"],
+                                 "currentContent": current_content, "latestContent": latest["contentVersion"],
                                  "entity": record["entity"], "product": record["product"]})
         return outdated
 
@@ -254,8 +258,15 @@ class PrismCommands(object):
             filepath = products.getPreferredFileFromVersion(version) or ""
         except Exception:
             filepath = ""  # e.g. the project drive is offline; resolveVersion reports it
+        content = version.get("version")
+        if content == "master":
+            try:
+                content = products.getMasterVersionNumber(version.get("path")) or "master"
+            except Exception:
+                content = "master"
         return {
             "version": version.get("version"),
+            "contentVersion": content,
             "comment": info.get("comment") or "",
             "user": info.get("user") or info.get("username") or "",
             "date": info.get("date") or "",

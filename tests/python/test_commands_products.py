@@ -16,6 +16,7 @@ class FakeProducts:
     def __init__(self, root):
         self.root = root
         self.latest_calls = []
+        self.master_source = None
         self.versions = []
         for i, comment in enumerate(("first", "bigger petals", "stem renamed"), start=1):
             path = os.path.join(root, "v%04d" % i)
@@ -45,6 +46,19 @@ class FakeProducts:
 
     def getVersionInfoFromVersion(self, version):
         return {"comment": version["_comment"], "user": "adm", "date": "11.11.26, 18:00:00"}
+
+    def getMasterVersionNumber(self, masterPath, allowCache=True):
+        return self.master_source
+
+    def add_master(self, source):
+        """Prism's default: 'master' is a copy of a numbered version and sorts as the latest."""
+        path = os.path.join(self.root, "master")
+        os.makedirs(path, exist_ok=True)
+        with open(os.path.join(path, "lotus_master.fbx"), "w") as f:
+            f.write("fbx")
+        self.master_source = source
+        self.versions.append({"type": "asset", "asset_path": "Props/Lotus", "product": "lotus_model", "version": "master",
+                              "path": path, "locations": {"global": path}, "_comment": "master"})
 
 
 class ProductCore(FakeCore):
@@ -111,10 +125,39 @@ class ProductCommandTests(unittest.TestCase):
         records = [{"id": "Props__Lotus__lotus_model", "entity": LOTUS, "product": "lotus_model", "version": "v0001"}]
         result = self.call("checkVersions", records=records)["result"]
         self.assertEqual(result, [{"id": "Props__Lotus__lotus_model", "current": "v0001", "latest": "v0003",
+                                   "currentContent": "v0001", "latestContent": "v0003",
                                    "entity": LOTUS, "product": "lotus_model"}])
 
     def test_check_versions_up_to_date_empty(self):
         records = [{"id": "Props__Lotus__lotus_model", "entity": LOTUS, "product": "lotus_model", "version": "v0003"}]
+        self.assertEqual(self.call("checkVersions", records=records)["result"], [])
+
+    def test_resolve_master_reports_its_content_version(self):
+        self.core.products.add_master("v0002")
+        result = self.call("resolveVersion", entity=LOTUS, product="lotus_model")["result"]
+        self.assertEqual(result["version"], "master")
+        self.assertEqual(result["contentVersion"], "v0002")
+
+    def test_numbered_version_content_is_itself(self):
+        result = self.call("resolveVersion", entity=LOTUS, product="lotus_model", version="v0002")["result"]
+        self.assertEqual(result["contentVersion"], "v0002")
+
+    def test_imported_master_is_outdated_when_master_moves(self):
+        self.core.products.add_master("v0003")
+        records = [{"id": "r", "entity": LOTUS, "product": "lotus_model", "version": "master", "contentVersion": "v0002"}]
+        result = self.call("checkVersions", records=records)["result"]
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["latest"], "master")
+        self.assertEqual(result[0]["latestContent"], "v0003")
+
+    def test_imported_master_up_to_date(self):
+        self.core.products.add_master("v0003")
+        records = [{"id": "r", "entity": LOTUS, "product": "lotus_model", "version": "master", "contentVersion": "v0003"}]
+        self.assertEqual(self.call("checkVersions", records=records)["result"], [])
+
+    def test_numbered_import_equal_to_master_content_is_up_to_date(self):
+        self.core.products.add_master("v0003")
+        records = [{"id": "r", "entity": LOTUS, "product": "lotus_model", "version": "v0003"}]
         self.assertEqual(self.call("checkVersions", records=records)["result"], [])
 
     def test_check_versions_skips_unreachable_products(self):

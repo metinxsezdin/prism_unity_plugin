@@ -15,6 +15,7 @@ namespace Prism.Unity.Editor
         [JsonProperty("entity")] public PrismEntity Entity;
         [JsonProperty("product")] public string Product;
         [JsonProperty("version")] public string Version;
+        [JsonProperty("contentVersion")] public string ContentVersion;
         [JsonProperty("sourcePath")] public string SourcePath;
         [JsonProperty("location")] public string Location;
         [JsonProperty("assetPath")] public string AssetPath;

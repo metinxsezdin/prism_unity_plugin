@@ -10,6 +10,8 @@ namespace Prism.Unity.Editor
     public class ResolvedVersion
     {
         [JsonProperty("version")] public string Version;
+        /// <summary>The numbered version the files contain ("master" is a copy of one).</summary>
+        [JsonProperty("contentVersion")] public string ContentVersion;
         [JsonProperty("filepath")] public string FilePath;
         [JsonProperty("location")] public string Location;
     }
@@ -77,6 +79,7 @@ namespace Prism.Unity.Editor
                 Entity = entity,
                 Product = product,
                 Version = v.Version,
+                ContentVersion = v.ContentVersion ?? v.Version,
                 SourcePath = v.FilePath.Replace('\\', '/'),
                 Location = v.Location,
                 AssetPath = target,

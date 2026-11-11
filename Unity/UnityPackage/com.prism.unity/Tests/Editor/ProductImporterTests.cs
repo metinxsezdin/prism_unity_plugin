@@ -45,6 +45,25 @@ namespace Prism.Unity.Editor.Tests
         }
 
         [Test]
+        public void MasterImportRecordsItsContentVersion()
+        {
+            var v = _fx.Version("lotus_v1.fbx", "master");
+            v.ContentVersion = "v0002";
+            ProductImporter.ImportResolved(ImportFixture.Lotus, ImportFixture.LotusProduct, v, false);
+            var record = ImportRecord.Load("Props__Lotus__lotus_model");
+            Assert.AreEqual("master", record.Version);
+            Assert.AreEqual("v0002", record.ContentVersion);
+            StringAssert.Contains("\"contentVersion\": \"v0002\"", File.ReadAllText(Path.Combine(ImportRecord.Folder, record.Id + ".json")));
+        }
+
+        [Test]
+        public void NumberedImportContentVersionDefaultsToVersion()
+        {
+            ImportLotus("lotus_v1.fbx", "v0001");
+            Assert.AreEqual("v0001", ImportRecord.Load("Props__Lotus__lotus_model").ContentVersion);
+        }
+
+        [Test]
         public void RecordFilesArePerProduct()
         {
             ImportLotus("lotus_v1.fbx", "v0001");
