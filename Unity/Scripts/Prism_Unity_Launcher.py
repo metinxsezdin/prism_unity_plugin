@@ -59,6 +59,7 @@ def main():
 
     from unity_bridge.command_server import CommandServer
     from unity_bridge.commands import PrismCommands
+    from unity_bridge.projects import pin_project
     from unity_bridge.unity_client import UnityClient
 
     class MainThreadInvoker(QObject):
@@ -98,11 +99,8 @@ def main():
     prism_project = env.get("PRISM_UNITY_PRISM_PROJECT", "")
     prism_args = ["noProjectBrowser", "splash"] if prism_project else ["loadProject", "noProjectBrowser", "splash"]
     pcore = PrismCore.create(app="Unity", prismArgs=prism_args)
-    if prism_project and os.path.normcase(os.path.abspath(getattr(pcore, "prismIni", "") or "")) != os.path.normcase(
-        os.path.abspath(prism_project)
-    ):
-        # Pin the project for this Unity project only; leave the user's global choice alone.
-        pcore.changeProject(prism_project, writeToConfig=False)
+    # Pin the project for this Unity project only; leave the user's global choice alone.
+    pin_project(pcore, prism_project)
 
     unity = UnityClient(int(env["PRISM_UNITY_PORT"]), env["PRISM_UNITY_TOKEN"])
     pcore.appPlugin.unity = unity
