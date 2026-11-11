@@ -8,22 +8,8 @@ $pluginDir = (Resolve-Path (Join-Path $repo "Unity")).Path
 $cfg = Join-Path $env:USERPROFILE "Documents\Prism2\PluginPaths.json"
 if (-not (Test-Path $cfg)) { throw "Prism plugin config not found: $cfg" }
 
-Copy-Item $cfg "$cfg.bak" -Force
+if (-not (Test-Path "$cfg.bak")) { Copy-Item $cfg "$cfg.bak" }  # keep the first, pre-deploy backup
 $python = "C:\Program Files\Prism2\Python313\python.exe"
-$code = @'
-import json, os, sys
-cfg, plugin, remove = sys.argv[1], sys.argv[2], sys.argv[3] == "1"
-with open(cfg, encoding="utf-8") as f:
-    data = json.load(f)
-plugins = data.setdefault("plugins", [])
-norm = lambda p: os.path.normcase(os.path.abspath(p))
-others = [p for p in plugins if norm(p.get("path", "")) != norm(plugin)]
-if not remove:
-    others.append({"path": plugin})
-data["plugins"] = others
-with open(cfg, "w", encoding="utf-8") as f:
-    json.dump(data, f, indent=4)
-print(("removed " if remove else "registered ") + plugin)
-'@
-& $python -c $code $cfg $pluginDir $(if ($Remove) { "1" } else { "0" })
+$action = if ($Remove) { "remove" } else { "add" }
+& $python (Join-Path $PSScriptRoot "plugin_paths.py") $cfg $pluginDir $action
 exit $LASTEXITCODE

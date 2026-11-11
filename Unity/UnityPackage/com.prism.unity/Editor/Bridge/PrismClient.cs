@@ -80,8 +80,15 @@ namespace Prism.Unity.Editor
             using (var client = new TcpClient())
             {
                 var connect = client.ConnectAsync("127.0.0.1", s.PrismPort);
-                if (!connect.Wait(TimeSpan.FromSeconds(5)) || !client.Connected)
-                    throw new SocketException((int)SocketError.ConnectionRefused);
+                try
+                {
+                    if (!connect.Wait(TimeSpan.FromSeconds(5)) || !client.Connected)
+                        throw new SocketException((int)SocketError.ConnectionRefused);
+                }
+                catch (AggregateException ae) when (ae.GetBaseException() is SocketException se)
+                {
+                    throw se; // Task.Wait wraps the refusal; callers rely on SocketException
+                }
                 client.ReceiveTimeout = (int)Math.Min(int.MaxValue, timeout.TotalMilliseconds);
                 var stream = client.GetStream();
                 var bytes = LineCodec.Encode(request);

@@ -56,6 +56,10 @@ class PluginFunctionsTests(unittest.TestCase):
         self.funcs.sceneFormats = [".unity"]
         self.assertEqual(self.funcs.getSceneExtension(None), ".unity")
 
+    def test_get_current_file_name_does_not_raise_at_startup(self):
+        # PrismCore.startup calls getCurrentFileName(); raising there opens a blocking error dialog.
+        self.assertEqual(self.funcs.getCurrentFileName(None), "")
+
     def test_unity_client_from_environment(self):
         from Prism_Unity_Functions import unity_client_from_env
 

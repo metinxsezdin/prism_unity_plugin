@@ -87,7 +87,8 @@ class Prism_Unity_Functions(object):
     # bridge errors reach PrismCommands.dispatch instead of an error dialog.
 
     def getCurrentFileName(self, origin, path=True):
-        raise NotImplementedError("Implemented with scene versioning (Task 10).")
+        # Called by PrismCore during startup: must not raise. "" means "no Prism scene".
+        return ""
 
     def getSceneExtension(self, origin):
         return self.sceneFormats[0]
