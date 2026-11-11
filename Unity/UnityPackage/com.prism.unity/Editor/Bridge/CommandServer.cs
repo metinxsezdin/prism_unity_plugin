@@ -17,6 +17,8 @@ namespace Prism.Unity.Editor
     {
         public const double DefaultTimeoutSec = 10;
         public const double MaxTimeoutSec = 600;
+        const int MaxLineChars = 4 * 1024 * 1024;
+        const int IdleTimeoutMs = 5 * 60 * 1000;
 
         readonly string _token;
         TcpListener _listener;
@@ -76,13 +78,23 @@ namespace Prism.Unity.Editor
             {
                 try
                 {
+                    client.ReceiveTimeout = IdleTimeoutMs; // an idle connection does not keep a thread forever
                     var stream = client.GetStream();
                     var reader = new StreamReader(stream, new UTF8Encoding(false));
                     string line;
                     while ((line = reader.ReadLine()) != null)
                     {
                         if (line.Trim().Length == 0) continue;
-                        var bytes = LineCodec.Encode(Respond(line));
+                        if (line.Length > MaxLineChars)
+                        {
+                            var tooLong = LineCodec.Encode(PrismResponse.Failure(null, ErrorCodes.BadRequest, "Request is too long."));
+                            stream.Write(tooLong, 0, tooLong.Length);
+                            return;
+                        }
+                        PrismResponse response;
+                        try { response = Respond(line); }
+                        catch (Exception e) { response = PrismResponse.Failure(null, ErrorCodes.BadRequest, e.Message); }
+                        var bytes = LineCodec.Encode(response);
                         stream.Write(bytes, 0, bytes.Length);
                     }
                 }

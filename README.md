@@ -97,6 +97,13 @@ Repoya girmesi gerekenler:
 - **"The Prism file is not reachable"**
   - Prism projesinin bulunduğu sürücünün (ör. `M:`) bağlı olduğunu kontrol et.
   - Bu durumda Unity'deki mevcut dosyaya dokunulmaz.
+- **"The Prism project of this Unity project is not reachable"**
+  - Unity projesinin bağlı olduğu Prism projesine ulaşılamıyor. Bağlantı `ProjectSettings/PrismUnity/project.json` dosyasında.
+  - Sürücünün bağlı olduğunu kontrol et. Prism bu durumda pencere açmadan durur.
+- **"Unity is not answering (it may be compiling scripts)"**
+  - Unity script derlerken Prism'den gelen çağrılar kısa süre bekler, sonra bu mesajı verir. Derleme bitince tekrar dene.
+- **Bir modelin formatı değişti (ör. FBX → OBJ)**
+  - Güncelleme onay ister. Onaylarsan Unity yeni bir asset oluşturur. Sahnelerdeki ve materyallerdeki eski bağlantılar eski asset'te kalır.
 - **Prism penceresi gelmiyor**
   - Prism Unity'den ilk kullanımda arka planda başlar. İlk çağrı bir dakikaya kadar sürebilir.
   - Prism çökerse bir sonraki işlemde kendiliğinden yeniden başlar.

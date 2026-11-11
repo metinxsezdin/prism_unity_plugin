@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -38,11 +39,21 @@ namespace Prism.Unity.Editor
         public static IReadOnlyList<ImportRecord> LoadAll()
         {
             if (!Directory.Exists(Folder)) return new List<ImportRecord>();
-            return Directory.GetFiles(Folder, "*.json")
-                .Select(f => JsonConvert.DeserializeObject<ImportRecord>(File.ReadAllText(f)))
-                .Where(r => r != null)
-                .OrderBy(r => r.Id)
-                .ToList();
+            var records = new List<ImportRecord>();
+            foreach (var file in Directory.GetFiles(Folder, "*.json"))
+            {
+                try
+                {
+                    var r = JsonConvert.DeserializeObject<ImportRecord>(File.ReadAllText(file));
+                    if (r != null) records.Add(r);
+                }
+                catch (Exception e) when (e is JsonException || e is IOException)
+                {
+                    // e.g. Git conflict markers in this team-shared folder: skip it, keep the rest working.
+                    UnityEngine.Debug.LogWarning($"[Prism] Skipping unreadable import record {Path.GetFileName(file)}: {e.Message}");
+                }
+            }
+            return records.OrderBy(r => r.Id).ToList();
         }
 
         /// <summary>The record whose imported asset is at this project-relative path, if any.</summary>

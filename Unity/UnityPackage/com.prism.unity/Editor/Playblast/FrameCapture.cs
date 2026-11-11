@@ -40,7 +40,10 @@ namespace Prism.Unity.Editor
             finally
             {
                 cam.targetTexture = previousTarget;
-                cam.aspect = previousAspect;
+                // Assigning aspect locks it; unlock it again unless it had been set by hand before.
+                cam.ResetAspect();
+                if (Mathf.Abs(cam.aspect - previousAspect) > 0.0001f)
+                    cam.aspect = previousAspect;
                 RenderTexture.active = previousActive;
                 RenderTexture.ReleaseTemporary(rt);
                 Object.DestroyImmediate(tex);

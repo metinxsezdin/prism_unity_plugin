@@ -96,7 +96,9 @@ namespace Prism.Unity.Editor
                 return Error(ErrorCodes.UnknownCommand, $"Unknown Prism tool '{toolName}'.", null);
             try
             {
-                var result = await tool.Handler(args ?? new JObject());
+                // Start every tool on the main thread (Unity APIs), whichever thread the bridge uses.
+                var started = await MainThreadDispatcher.Run(() => tool.Handler(args ?? new JObject()), TimeSpan.FromSeconds(30));
+                var result = await started;
                 return new JObject { ["ok"] = true, ["result"] = result ?? JValue.CreateNull() };
             }
             catch (PrismCommandException e)

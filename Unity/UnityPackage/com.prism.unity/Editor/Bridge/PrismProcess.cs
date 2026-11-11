@@ -67,6 +67,11 @@ namespace Prism.Unity.Editor
                 throw new PrismCommandException(ErrorCodes.PrismUnavailable, $"Prism Unity plugin launcher not found: {launcher}");
         }
 
+        /// <summary>Launcher exit code → message (3 = the pinned Prism project is not reachable).</summary>
+        public static string ExitMessage(int exitCode) => exitCode == 3
+            ? "The Prism project of this Unity project is not reachable (is its drive connected?). See ProjectSettings/PrismUnity/project.json."
+            : $"Prism exited during startup (exit code {exitCode}).";
+
         /// <summary>True when the process this domain started has exited with a non-zero code.</summary>
         public static bool HasOwnedExitedWithError(out int exitCode)
         {

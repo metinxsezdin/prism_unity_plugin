@@ -43,6 +43,7 @@ namespace Prism.Unity.Editor
             PrismProcess.CheckInstalled(ctx); // fails fast with prism_unavailable
             try
             {
+                if (interactive) LetPrismComeToFront(ctx);
                 return Call(ctx, cmd, args, interactive, timeout);
             }
             catch (Exception e) when (PrismWentAway(e))
@@ -51,8 +52,24 @@ namespace Prism.Unity.Editor
                 PrismProcess.ForgetExitedProcess();
                 PrismProcess.EnsureRunning(ctx);
                 WaitUntilReady(ctx);
+                if (interactive) LetPrismComeToFront(ctx);
                 return Call(ctx, cmd, args, interactive, timeout);
             }
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        static extern bool AllowSetForegroundWindow(int processId);
+
+        /// <summary>
+        /// Windows only lets the foreground app bring another process's window forward. Unity is in front
+        /// when the artist picks a Prism menu item, so it hands that right to Prism for its window.
+        /// </summary>
+        static void LetPrismComeToFront(LaunchContext ctx)
+        {
+            var pid = PrismEndpoint.ReadPrismPid(ctx.ProjectRoot);
+            if (pid == null) return;
+            try { AllowSetForegroundWindow(pid.Value); }
+            catch (Exception) { /* not Windows, or not permitted: the window may open behind Unity */ }
         }
 
         /// <summary>Refused, or accepted and then reset (a Prism process that is exiting).</summary>
@@ -76,7 +93,7 @@ namespace Prism.Unity.Editor
                 }
                 catch (Exception e) when (PrismWentAway(e) || e is IOException) { }
                 if (!PrismProcess.IsRunning() && PrismProcess.HasOwnedExitedWithError(out var code))
-                    throw new PrismCommandException(ErrorCodes.PrismUnavailable, $"Prism exited during startup (exit code {code}).");
+                    throw new PrismCommandException(ErrorCodes.PrismUnavailable, PrismProcess.ExitMessage(code));
                 Thread.Sleep(500);
             }
             throw new PrismCommandException(ErrorCodes.PrismUnavailable,

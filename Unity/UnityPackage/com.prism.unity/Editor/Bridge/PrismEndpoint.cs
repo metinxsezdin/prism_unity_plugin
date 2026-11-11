@@ -13,7 +13,12 @@ namespace Prism.Unity.Editor
     public static class PrismEndpoint
     {
         /// <summary>The published port, or null when there is none or its Prism process has exited.</summary>
-        public static int? ReadPrismPort(string projectRoot)
+        public static int? ReadPrismPort(string projectRoot) => Read(projectRoot)?.port;
+
+        /// <summary>The live Prism process id, or null.</summary>
+        public static int? ReadPrismPid(string projectRoot) => Read(projectRoot)?.pid;
+
+        static (int port, int pid)? Read(string projectRoot)
         {
             var path = Path.Combine(projectRoot, "Library", "PrismUnity", "prism.json");
             try
@@ -23,7 +28,7 @@ namespace Prism.Unity.Editor
                 var pid = (int?)json["pid"];
                 var port = (int?)json["port"];
                 if (pid == null || port == null || !IsAlive(pid.Value)) return null;
-                return port;
+                return (port.Value, pid.Value);
             }
             catch (Exception e) when (e is IOException || e is JsonException || e is FormatException || e is ArgumentException)
             {

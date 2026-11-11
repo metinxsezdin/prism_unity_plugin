@@ -55,6 +55,14 @@ namespace Prism.Unity.Editor
                 throw new PrismCommandException(ErrorCodes.SourceUnavailable,
                     $"The Prism file is not reachable: {v.FilePath}. Check that the project drive is connected.");
 
+            // A new file format means a new Unity asset: references stay on the old one.
+            var existing = ImportRecord.Load(ImportRecord.MakeId(entity, product));
+            var previousExt = existing == null ? null : Path.GetExtension(existing.AssetPath ?? "").ToLowerInvariant();
+            if (!string.IsNullOrEmpty(previousExt) && previousExt != ext && !confirm)
+                throw new PrismCommandException(ErrorCodes.NeedsConfirmation,
+                    $"This version is a {ext} file but the imported one is {previousExt}. Unity will create a new asset; scenes, prefabs and material assignments keep using the old {previousExt} asset until you switch them.",
+                    new Newtonsoft.Json.Linq.JObject { ["reason"] = "format_changed", ["from"] = previousExt, ["to"] = ext, ["oldAssetPath"] = existing.AssetPath });
+
             var target = TargetPath(entity, product, ext);
             var targetFull = Path.Combine(PrismSettings.ProjectRoot, target);
             var updated = File.Exists(targetFull);

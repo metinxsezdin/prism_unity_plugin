@@ -115,7 +115,16 @@ namespace Prism.Unity.Editor
             var obj = Parse(line);
             if (obj["cmd"]?.Type != JTokenType.String)
                 throw new PrismCommandException(ErrorCodes.BadRequest, "Request has no command.");
-            return obj.ToObject<PrismRequest>();
+            if (obj["args"] != null && obj["args"].Type != JTokenType.Object && obj["args"].Type != JTokenType.Null)
+                throw new PrismCommandException(ErrorCodes.BadRequest, "Request args must be an object.");
+            try
+            {
+                return obj.ToObject<PrismRequest>();
+            }
+            catch (Exception e) when (e is JsonException || e is ArgumentException || e is FormatException || e is InvalidCastException)
+            {
+                throw new PrismCommandException(ErrorCodes.BadRequest, "Malformed request: " + e.Message);
+            }
         }
 
         public static PrismResponse DecodeResponse(string line)
@@ -137,7 +146,8 @@ namespace Prism.Unity.Editor
             {
                 throw new PrismCommandException(ErrorCodes.BadRequest, "Message is not valid JSON.");
             }
-            if ((int?)obj["v"] != PrismRequest.ProtocolVersion)
+            var v = obj["v"];
+            if (v == null || v.Type != JTokenType.Integer || (int)v != PrismRequest.ProtocolVersion)
                 throw new PrismCommandException(ErrorCodes.BadRequest, "Unsupported protocol version.");
             return obj;
         }

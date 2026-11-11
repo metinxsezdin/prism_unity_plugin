@@ -27,7 +27,7 @@ The C# API `PrismMcpTools.Invoke` uses the same content as `{"ok", "result"}` / 
 | `needs_confirmation` | The action could lose work or break references. `details.reason` / `details.removedNodes` / `removedMaterials` say why. | Show the user the details and ask. Only after a yes, call again with `confirm` / `createDepartment` / `confirmForeign` / `unsaved`. Never confirm on your own. |
 | `source_unavailable` | The Prism file or version is not reachable (wrong version, offline drive). | Tell the user; list versions with `prism_list_versions`. |
 | `missing_package` | A Unity package is needed (e.g. Alembic for `.abc`). | Tell the user which package to add. |
-| `unity_busy` | Unity is in Play Mode. | Ask the user to leave Play Mode. |
+| `unity_busy` | Unity is in Play Mode, or is compiling scripts. | Ask the user to leave Play Mode, or retry after compilation. |
 | `prism_unavailable` | Prism is not installed or did not start. | Tell the user; check the Prism install. |
 | `bad_args` | Wrong or missing arguments. | Fix the call. |
 | `timeout`, `internal` | Something else went wrong. | Report the message. |
@@ -57,6 +57,8 @@ Import a product version into `Assets/Prism/<entity>/<product>/<product>.<ext>`.
   scene placement are kept.
 - **Breaking update:** If the new version renames or removes objects or materials, the answer is `needs_confirmation` with the
   diff, and nothing changes until you call again with `"confirm": true`.
+- **Format change:** If the new version has a different file format (e.g. `.fbx` → `.obj`), the answer is `needs_confirmation`
+  (`reason: format_changed`). Confirming creates a second asset; scenes and materials keep using the old one until switched.
 - **Example:** `{"entity":{"type":"asset","asset_path":"Props/Lotus"},"product":"lotus_model"}`
 
 ### prism_update
