@@ -94,10 +94,30 @@ namespace Prism.Unity.Editor
             Directory.CreateDirectory(staging);
             var tmp = Path.Combine(staging, Guid.NewGuid().ToString("N") + ".prismtmp");
             File.Copy(source, tmp, true);
-            if (File.Exists(targetFull))
-                File.Replace(tmp, targetFull, null);
-            else
+            if (!File.Exists(targetFull))
+            {
                 File.Move(tmp, targetFull);
+                return;
+            }
+            // Unity's import workers can hold the model open for a moment after a reimport.
+            for (var attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    File.Replace(tmp, targetFull, null);
+                    return;
+                }
+                catch (IOException) when (attempt < 10)
+                {
+                    System.Threading.Thread.Sleep(100);
+                }
+                catch (IOException)
+                {
+                    File.Copy(tmp, targetFull, true); // the complete new file is already on disk
+                    File.Delete(tmp);
+                    return;
+                }
+            }
         }
 
         internal static void EnsureFolder(string assetFolder)
