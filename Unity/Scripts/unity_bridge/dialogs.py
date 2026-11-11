@@ -53,6 +53,32 @@ def run_import(cmds, cmd, args):
             return None
 
 
+def ask_scene_target(cmds):
+    """Ask which Prism asset and task an unsaved Unity scene belongs to. None when cancelled."""
+    from qtpy.QtWidgets import QInputDialog
+
+    entities = cmds.core.entities
+    try:
+        assets = sorted(entities.getAssetRelPathFromPath(p).replace("\\", "/") for p in entities.getAssetPaths())
+    except Exception:
+        assets = []
+    asset, ok = QInputDialog.getItem(None, "Save Unity scene in Prism",
+                                     "Prism asset for this scene (e.g. Scenes/MeditationRoom):", assets, 0, True)
+    if not ok or not asset.strip():
+        return None
+    task, ok = QInputDialog.getText(None, "Save Unity scene in Prism", "Task name:", text="layout")
+    if not ok or not task.strip():
+        return None
+    return {"entity": {"type": "asset", "asset_path": asset.strip().strip("/")}, "task": task.strip()}
+
+
+def ask_comment():
+    from qtpy.QtWidgets import QInputDialog
+
+    comment, ok = QInputDialog.getText(None, "Save Version", "Comment:")
+    return comment if ok else None
+
+
 def entity_from_product_data(data):
     return {k: data[k] for k in ("type", "asset_path", "sequence", "shot") if data.get(k)}
 

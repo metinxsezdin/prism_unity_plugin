@@ -54,7 +54,8 @@ class PrismCommands(object):
 
         try:
             if request.get("interactive"):
-                result = fn(**args)
+                interactive_fn = getattr(self, "_interactive_" + cmd, None)
+                result = interactive_fn(**args) if interactive_fn else fn(**args)
             else:
                 with headless(self.core):
                     result = fn(**args)
@@ -77,6 +78,77 @@ class PrismCommands(object):
     def settings(self):
         self.core.prismSettings()
         return True
+
+    # --- scenes --------------------------------------------------------------
+
+    DEFAULT_DEPARTMENT = "Unity"
+
+    def saveVersion(self, comment="", entity=None, department=None, task=None, createDepartment=False):
+        binding = self.unity.call("getSceneBinding") or {}
+        entity = entity or binding.get("entity")
+        task = task or binding.get("task")
+        department = department or binding.get("department") or self.DEFAULT_DEPARTMENT
+        missing = [name for name, value in (("entity", entity), ("task", task)) if not value]
+        if missing:
+            raise BridgeError(
+                "needs_input",
+                "This Unity scene is not saved in Prism yet. Choose the Prism %s to save it under." % " and ".join(missing),
+                {"missing": missing, "department": department},
+            )
+
+        if department not in (self.core.entities.getSteps(entity) or []):
+            if not createDepartment:
+                raise BridgeError(
+                    "needs_confirmation",
+                    "The Prism department '%s' does not exist for %s yet. Confirm to create it." % (department, _entity_label(entity)),
+                    {"reason": "create_department", "department": department, "entity": entity},
+                )
+            self.core.entities.createDepartment(department, entity, createCat=False)
+        if task not in (self.core.entities.getCategories(entity, department) or []):
+            self.core.entities.createCategory(entity, department, task)
+
+        if (binding.get("entity"), binding.get("department"), binding.get("task")) != (entity, department, task):
+            self.unity.call("bindScene", {"entity": entity, "department": department, "task": task})
+
+        target = self.core.generateScenePath(entity=entity, department=department, task=task, comment=comment,
+                                             extension=self.core.appPlugin.getSceneExtension(self.core))
+        saved = self.core.saveScene(comment=comment, filepath=target)
+        if not saved:
+            raise BridgeError("internal", "Prism could not save the scene version.")
+        saved = saved if isinstance(saved, str) else target
+        return {"path": saved.replace("\\", "/"), "version": (self.core.getScenefileData(saved) or {}).get("version")}
+
+    def saveComment(self):
+        """Menu: ask for a comment (and a target the first time), then save a version."""
+        from . import dialogs
+
+        binding = self.unity.call("getSceneBinding") or {}
+        target = {} if binding.get("entity") else dialogs.ask_scene_target(self)
+        if target is None:
+            return None
+        comment = dialogs.ask_comment()
+        if comment is None:
+            return None
+        return self._save_interactively(comment=comment, **target)
+
+    def _interactive_saveVersion(self, **kwargs):
+        return self._save_interactively(**kwargs)
+
+    def _save_interactively(self, **kwargs):
+        """Menu flow: ask for what is missing instead of failing."""
+        from . import dialogs
+
+        try:
+            return self.saveVersion(**kwargs)
+        except BridgeError as e:
+            if e.code == "needs_input":
+                target = dialogs.ask_scene_target(self)
+                return self._save_interactively(**dict(kwargs, **target)) if target else None
+            if e.code == "needs_confirmation" and e.details.get("reason") == "create_department":
+                if self.core.popupQuestion(e.message, buttons=["Create", "Cancel"]) == "Create":
+                    return self.saveVersion(**dict(kwargs, createDepartment=True))
+                return None
+            raise
 
     # --- products ------------------------------------------------------------
 

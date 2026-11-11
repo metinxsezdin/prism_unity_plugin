@@ -51,6 +51,7 @@ namespace Prism.Unity.Editor
                 return true;
             }, false);
             RegisterImport();
+            SceneVersioning.Register();
         }
 
         // Prism's import windows call these with the version already resolved (args.resolved):

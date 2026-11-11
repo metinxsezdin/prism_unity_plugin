@@ -135,6 +135,15 @@ namespace Prism.Unity.Editor.Tests
         }
 
         [UnityTest]
+        public IEnumerator MutatingCommandRunsWhenNotPlaying()
+        {
+            PrismSession.PlayModeOverride = null; // the real Play Mode check must run on the main thread
+            var t = BridgeTestClient.Send(_server.Port, Req("test.mutate"));
+            yield return BridgeTestClient.Wait(t);
+            Assert.IsTrue(t.Result.Ok, t.Result.Error?.Message);
+        }
+
+        [UnityTest]
         public IEnumerator HandlerExceptionBecomesError()
         {
             var t = BridgeTestClient.Send(_server.Port, Req("test.needsInput"));

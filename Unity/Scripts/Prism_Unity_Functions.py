@@ -87,14 +87,26 @@ class Prism_Unity_Functions(object):
     # bridge errors reach PrismCommands.dispatch instead of an error dialog.
 
     def getCurrentFileName(self, origin, path=True):
-        # Called by PrismCore during startup: must not raise. "" means "no Prism scene".
-        return ""
+        # Called by PrismCore during startup and by its windows: must not raise.
+        # The Prism-side file of the active Unity scene is its last saved Prism version.
+        if self.unity is None:
+            return ""
+        try:
+            binding = self.unity.call("getSceneBinding") or {}
+        except BridgeError:
+            return ""
+        return binding.get("lastPrismPath") or ""
 
     def getSceneExtension(self, origin):
         return self.sceneFormats[0]
 
     def saveScene(self, origin, filepath, details={}):
-        raise NotImplementedError("Implemented with scene versioning (Task 10).")
+        """Save the Unity working scene and copy it to Prism's versioned path."""
+        unity = self._unity()
+        info = unity.call("getProjectInfo") or {}
+        details["unityProductGuid"] = info.get("productGuid", "")
+        unity.call("saveSceneTo", {"path": filepath.replace("\\", "/")}, timeout=120)
+        return True
 
     @err_catcher(name=__name__)
     def getImportPaths(self, origin):

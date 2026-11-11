@@ -101,9 +101,6 @@ namespace Prism.Unity.Editor
                 return PrismResponse.Failure(req.Id, ErrorCodes.BadToken, "Invalid session token.");
             if (!CommandRegistry.TryGet(req.Cmd, out var handler, out var mutates))
                 return PrismResponse.Failure(req.Id, ErrorCodes.UnknownCommand, $"Unknown command: {req.Cmd}");
-            if (mutates && PrismSession.IsPlaying())
-                return PrismResponse.Failure(req.Id, ErrorCodes.UnityBusy, "Unity is in Play Mode; leave Play Mode and try again.");
-
             var args = req.Args ?? new JObject();
             var timeout = TimeSpan.FromSeconds(Math.Min(MaxTimeoutSec, (double?)args["_timeoutSec"] ?? DefaultTimeoutSec));
             foreach (var p in new System.Collections.Generic.List<JProperty>(args.Properties()))
@@ -112,7 +109,13 @@ namespace Prism.Unity.Editor
             var ctx = new CommandContext { Interactive = req.Interactive };
             try
             {
-                var result = MainThreadDispatcher.Run(() => handler(args, ctx), timeout).GetAwaiter().GetResult();
+                var result = MainThreadDispatcher.Run(() =>
+                {
+                    // Editor state may only be read on the main thread.
+                    if (mutates && PrismSession.IsPlaying())
+                        throw new PrismCommandException(ErrorCodes.UnityBusy, "Unity is in Play Mode; leave Play Mode and try again.");
+                    return handler(args, ctx);
+                }, timeout).GetAwaiter().GetResult();
                 return PrismResponse.Success(req.Id, result);
             }
             catch (PrismCommandException e) { return PrismResponse.Failure(req.Id, e); }
