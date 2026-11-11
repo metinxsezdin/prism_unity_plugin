@@ -46,7 +46,8 @@ class Prism_Unity_Integration(object):
                     % installPath
                 )
                 return False
-            manifest.add_package(installPath, self.packageDir)
+            # Embedded copies travel with the project through Git; no machine-specific paths.
+            manifest.install_embedded(installPath, self.pluginDirectory)
             prism_project = getattr(self.core, "prismIni", "") or ""
             if prism_project:
                 manifest.write_project_binding(installPath, prism_project)
@@ -58,7 +59,8 @@ class Prism_Unity_Integration(object):
     def removeIntegration(self, installPath):
         try:
             if manifest.is_unity_project(installPath):
-                manifest.remove_package(installPath)
+                manifest.remove_embedded(installPath)
+                manifest.remove_package(installPath)  # v1 installs
             return True
         except Exception as e:
             self._warn("Errors occurred during the removal of the Unity integration.\n\n%s: %s" % (type(e).__name__, e))

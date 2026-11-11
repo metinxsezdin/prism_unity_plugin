@@ -15,15 +15,8 @@ namespace Prism.Unity.Editor
             set => EditorPrefs.SetString(PrismRootKey, value);
         }
 
-        /// <summary>The Prism plugin folder ("Unity"), two levels above this package.</summary>
-        public static string PluginDir
-        {
-            get
-            {
-                var info = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(PrismSettings).Assembly);
-                return Path.GetFullPath(Path.Combine(info.resolvedPath, "..", ".."));
-            }
-        }
+        /// <summary>The Prism plugin folder ("Unity") on this machine, or null (see PluginLocator).</summary>
+        public static string PluginDir => PluginLocator.Find();
 
         public static string ProjectRoot => Path.GetFullPath(Path.Combine(UnityEngine.Application.dataPath, ".."));
     }

@@ -1,6 +1,7 @@
 """Adding and removing the com.prism.unity package in a Unity project's Packages/manifest.json."""
 
 import json
+import shutil
 import os
 from collections import OrderedDict
 
@@ -61,6 +62,47 @@ def remove_package(project_path):
     del deps[PACKAGE_NAME]
     _write(path, data)
     return True
+
+
+EMBEDDED_PACKAGES = ("com.prism.unity", "com.prism.assets")
+
+
+def install_embedded(project_path, plugin_dir):
+    """Copy the Prism packages into <project>/Packages so the project carries them (and Git shares them).
+
+    Replaces an existing copy, and removes v1's machine-specific "file:" manifest entries.
+    Returns the names of the packages installed.
+    """
+    path = _manifest_path(project_path)
+    installed = []
+    for name in EMBEDDED_PACKAGES:
+        source = os.path.join(plugin_dir, "UnityPackage", name)
+        if not os.path.isfile(os.path.join(source, "package.json")):
+            continue
+        target = os.path.join(project_path, "Packages", name)
+        if os.path.isdir(target):
+            shutil.rmtree(target)
+        shutil.copytree(source, target)
+        installed.append(name)
+
+    data = _read(path)
+    deps = data.get("dependencies") or OrderedDict()
+    if any(name in deps for name in EMBEDDED_PACKAGES):
+        data["dependencies"] = OrderedDict((k, v) for k, v in deps.items() if k not in EMBEDDED_PACKAGES)
+        _write(path, data)
+    return installed
+
+
+def remove_embedded(project_path):
+    """Remove the embedded Prism packages. Returns True when something was removed."""
+    _manifest_path(project_path)
+    removed = False
+    for name in EMBEDDED_PACKAGES:
+        target = os.path.join(project_path, "Packages", name)
+        if os.path.isdir(target):
+            shutil.rmtree(target)
+            removed = True
+    return removed
 
 
 def write_project_binding(project_path, prism_project_config):
