@@ -21,5 +21,15 @@ namespace Prism.Unity.Editor
             if (!string.IsNullOrEmpty(task)) args["task"] = task;
             return (JObject)await PrismClient.SendAsync("saveVersion", args, interactive, TimeSpan.FromMinutes(5));
         }
+
+        /// <summary>
+        /// Open a Prism scene version (its .unity path in the Prism project) in its working path.
+        /// unsaved: "abort" | "save" | "discard". Needs no Prism call; returns {workingPath}.
+        /// </summary>
+        public static Task<JObject> OpenSceneVersion(string prismScenePath, string unsaved = "abort", bool confirmForeign = false) =>
+            MainThreadDispatcher.Run(() => new JObject
+            {
+                ["workingPath"] = SceneVersioning.OpenFrom(prismScenePath, unsaved, null, confirmForeign),
+            }, TimeSpan.FromMinutes(5));
     }
 }

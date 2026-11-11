@@ -50,8 +50,100 @@ namespace Prism.Unity.Editor
             return scene.path;
         }
 
+        /// <summary>
+        /// Bring a Prism scene version into its working path in Assets/ and open it.
+        /// unsaved: "abort" (fail with needs_confirmation if the active scene has changes), "save" or "discard".
+        /// sourceProductGuid: the Unity project that saved the version; null reads it from Prism's version info.
+        /// </summary>
+        public static string OpenFrom(string prismPath, string unsaved, string sourceProductGuid, bool confirmForeign,
+            PrismEntity entity = null, string department = null, string task = null)
+        {
+            if (!File.Exists(prismPath))
+                throw new PrismCommandException(ErrorCodes.SourceUnavailable, $"The Prism scene file is not reachable: {prismPath}");
+
+            var info = ReadVersionInfo(prismPath);
+            sourceProductGuid = sourceProductGuid ?? (string)info["unityProductGuid"];
+            entity = entity ?? (info["type"] != null ? info.ToObject<PrismEntity>() : null);
+            department = department ?? (string)info["department"];
+            task = task ?? (string)info["task"];
+
+            var binding = SceneBinding.FindByPrismPath(prismPath);
+            var working = binding?.WorkingPath;
+            if (working == null)
+            {
+                if (entity == null || string.IsNullOrEmpty(task))
+                    throw new PrismCommandException(ErrorCodes.NeedsInput,
+                        "Prism has no target (entity and task) for this scene file, so Unity does not know where to put it.",
+                        new JObject { ["missing"] = new JArray("entity", "task") });
+                working = SceneBinding.DefaultWorkingPath(entity, task);
+            }
+
+            var active = EditorSceneManager.GetActiveScene();
+            if (active.isDirty)
+            {
+                switch (unsaved)
+                {
+                    case "discard":
+                        break;
+                    case "save":
+                        if (string.IsNullOrEmpty(active.path))
+                            throw new PrismCommandException(ErrorCodes.BadArgs, "The active scene was never saved; use unsaved='discard' or save it first.");
+                        EditorSceneManager.SaveScene(active);
+                        break;
+                    default:
+                        throw new PrismCommandException(ErrorCodes.NeedsConfirmation,
+                            $"'{active.name}' has unsaved changes. Save them, discard them, or cancel.",
+                            new JObject { ["reason"] = "unsaved_changes", ["scene"] = active.path });
+                }
+            }
+
+            var current = PlayerSettings.productGUID.ToString();
+            if (!string.IsNullOrEmpty(sourceProductGuid) && sourceProductGuid != current && !confirmForeign)
+                throw new PrismCommandException(ErrorCodes.NeedsConfirmation,
+                    "This scene version was saved from a different Unity project; its asset references may not resolve here.",
+                    new JObject { ["reason"] = "foreign_project", ["sourceProductGuid"] = sourceProductGuid });
+
+            // Leave the target scene before overwriting its file, so Unity never reloads a half-written scene.
+            EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            ProductImporter.EnsureFolder(Path.GetDirectoryName(working).Replace('\\', '/'));
+            File.Copy(prismPath, Path.Combine(PrismSettings.ProjectRoot, working), true);
+            AssetDatabase.ImportAsset(working, ImportAssetOptions.ForceUpdate | ImportAssetOptions.ForceSynchronousImport);
+            EditorSceneManager.OpenScene(working, OpenSceneMode.Single);
+
+            binding = SceneBinding.ForScenePath(working) ?? binding ?? new SceneBinding();
+            binding.SceneGuid = AssetDatabase.AssetPathToGUID(working);
+            binding.WorkingPath = working;
+            binding.Entity = entity ?? binding.Entity;
+            binding.Department = department ?? binding.Department;
+            binding.Task = task ?? binding.Task;
+            binding.LastPrismPath = prismPath.Replace('\\', '/');
+            binding.Save();
+            return working;
+        }
+
+        /// <summary>Prism's version info next to a scene file: &lt;name&gt;versioninfo.json (empty if missing).</summary>
+        public static JObject ReadVersionInfo(string prismPath)
+        {
+            var path = Path.Combine(Path.GetDirectoryName(prismPath), Path.GetFileNameWithoutExtension(prismPath) + "versioninfo.json");
+            try
+            {
+                return File.Exists(path) ? JObject.Parse(File.ReadAllText(path)) : new JObject();
+            }
+            catch (Newtonsoft.Json.JsonException)
+            {
+                return new JObject();
+            }
+        }
+
         internal static void Register()
         {
+            CommandRegistry.Register("openSceneFrom", (a, c) =>
+            {
+                var working = OpenFrom(UnityCommands.RequireString(a, "path"), (string)a["unsaved"] ?? "abort",
+                    (string)a["sourceProductGuid"], (bool?)a["confirmForeign"] ?? false,
+                    a["entity"] is JObject e ? PrismEntity.FromJson(e) : null, (string)a["department"], (string)a["task"]);
+                return new JObject { ["workingPath"] = working };
+            }, true);
             CommandRegistry.Register("getSceneBinding", (a, c) =>
             {
                 var b = SceneBinding.ForActiveScene();

@@ -105,6 +105,13 @@ class Prism_Unity_Functions(object):
         unity = self._unity()
         info = unity.call("getProjectInfo") or {}
         details["unityProductGuid"] = info.get("productGuid", "")
+        # The target goes into Prism's version info, so Unity can open the version on its own.
+        binding = unity.call("getSceneBinding") or {}
+        for key, value in (binding.get("entity") or {}).items():
+            details[key] = value
+        for key in ("department", "task"):
+            if binding.get(key):
+                details[key] = binding[key]
         unity.call("saveSceneTo", {"path": filepath.replace("\\", "/")}, timeout=120)
         return True
 
@@ -129,7 +136,34 @@ class Prism_Unity_Functions(object):
         return self._unity().call("getAppVersion")
 
     def openScene(self, origin, filepath, force=False):
-        raise NotImplementedError("Implemented with scene versioning (Task 11).")
+        """Open a Prism scene version in Unity (from Prism's Project Browser).
+
+        Unsaved changes or a version from another Unity project are asked about in the
+        interactive case; in headless mode ("silent") the needs_confirmation error propagates.
+        """
+        unity = self._unity()
+        args = {"path": filepath.replace("\\", "/"), "unsaved": "abort", "confirmForeign": False}
+        for _ in range(3):
+            try:
+                unity.call("openSceneFrom", args, interactive=True, timeout=300)
+                return True
+            except BridgeError as e:
+                if e.code != "needs_confirmation" or "silent" in self.core.prismArgs:
+                    raise
+                reason = e.details.get("reason")
+                if reason == "unsaved_changes":
+                    answer = self.core.popupQuestion(e.message, title="Open in Unity", buttons=["Save", "Discard", "Cancel"])
+                    if answer not in ("Save", "Discard"):
+                        return False
+                    args["unsaved"] = answer.lower()
+                elif reason == "foreign_project":
+                    answer = self.core.popupQuestion(e.message, title="Open in Unity", buttons=["Open anyway", "Cancel"])
+                    if answer != "Open anyway":
+                        return False
+                    args["confirmForeign"] = True
+                else:
+                    raise
+        return False
 
     @err_catcher(name=__name__)
     def sm_export_addObjects(self, origin, objects=None):
