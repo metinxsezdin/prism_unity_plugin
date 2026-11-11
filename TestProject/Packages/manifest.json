@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "com.prism.assets": "file:../../Unity/UnityPackage/com.prism.assets",
     "com.prism.unity": "file:../../Unity/UnityPackage/com.prism.unity",
     "com.unity.ai.assistant": "2.19.0-pre.2",
     "com.unity.ai.navigation": "2.0.14",

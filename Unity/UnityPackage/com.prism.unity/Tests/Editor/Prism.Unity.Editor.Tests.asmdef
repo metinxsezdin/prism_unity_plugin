@@ -1,14 +1,28 @@
 {
     "name": "Prism.Unity.Editor.Tests",
     "rootNamespace": "Prism.Unity.Editor.Tests",
-    "references": ["Prism.Unity.Editor", "UnityEngine.TestRunner", "UnityEditor.TestRunner"],
-    "includePlatforms": ["Editor"],
+    "references": [
+        "Prism.Unity.Editor",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner",
+        "Prism.Assets",
+        "Unity.Addressables",
+        "Unity.ResourceManager"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": true,
-    "precompiledReferences": ["nunit.framework.dll", "Newtonsoft.Json.dll"],
+    "precompiledReferences": [
+        "nunit.framework.dll",
+        "Newtonsoft.Json.dll"
+    ],
     "autoReferenced": false,
-    "defineConstraints": ["UNITY_INCLUDE_TESTS"],
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
     "versionDefines": [],
     "noEngineReferences": false
 }
