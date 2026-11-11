@@ -20,8 +20,21 @@ class UnityClientTests(unittest.TestCase):
     def test_call_passes_args_and_interactive(self):
         with FakeLineServer(lambda m: protocol.ok(m["id"], None)) as srv:
             UnityClient(srv.port, "tok").call("setFPS", {"fps": 24}, interactive=True)
-            self.assertEqual(srv.received[0]["args"], {"fps": 24})
+            self.assertEqual(srv.received[0]["args"]["fps"], 24)
             self.assertTrue(srv.received[0]["interactive"])
+
+    def test_call_sends_timeout_to_unity(self):
+        # Unity's server enforces args._timeoutSec (default 10 s); long Prism-started calls
+        # such as a playblast must tell Unity how long they may run.
+        with FakeLineServer(lambda m: protocol.ok(m["id"], None)) as srv:
+            UnityClient(srv.port, "tok").call("playblast", {"frames": 120}, timeout=600)
+            self.assertEqual(srv.received[0]["args"]["_timeoutSec"], 600)
+            self.assertEqual(srv.received[0]["args"]["frames"], 120)
+
+    def test_default_timeout_is_sent_too(self):
+        with FakeLineServer(lambda m: protocol.ok(m["id"], None)) as srv:
+            UnityClient(srv.port, "tok", timeout=10.0).call("getFPS")
+            self.assertEqual(srv.received[0]["args"]["_timeoutSec"], 10.0)
 
     def test_call_raises_bridge_error_with_code(self):
         def responder(m):

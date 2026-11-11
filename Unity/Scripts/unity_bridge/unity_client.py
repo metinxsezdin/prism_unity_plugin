@@ -22,6 +22,9 @@ class UnityClient(object):
         editor cannot be reached at all.
         """
         timeout = self.timeout if timeout is None else timeout
+        # Unity enforces its own limit from _timeoutSec (10 s by default); send ours so long
+        # calls (playblast, big imports, scene saves) are not cut off on the Unity side.
+        args = dict(args or {}, _timeoutSec=timeout)
         request = protocol.make_request(cmd, args, self.token, interactive)
         try:
             # Windows retries refused loopback connects for ~2 s, so a connect-phase
