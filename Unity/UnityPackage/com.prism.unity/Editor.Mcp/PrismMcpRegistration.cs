@@ -14,7 +14,6 @@ namespace Prism.Unity.Editor.Mcp
     {
         static PrismMcpRegistration()
         {
-            UnityEngine.Debug.Log("[Prism] MCP adapter loaded.");
             // McpToolRegistry.RefreshTools() drops dynamically registered tools, and the bridge refreshes
             // after startup in the interactive editor, so register again after every refresh.
             McpToolRegistry.ToolsChanged += e =>
@@ -25,26 +24,23 @@ namespace Prism.Unity.Editor.Mcp
             MainThreadDispatcher.Defer(RegisterAll);
         }
 
-        [MenuItem("Prism/Debug/Register MCP Tools", priority = 200)]
+        [MenuItem("Prism/Debug/Re-register Claude (MCP) Tools", priority = 200)]
         static void RegisterFromMenu() => RegisterAll();
 
         public static void RegisterAll()
         {
-            var registered = 0;
             foreach (var tool in PrismMcpTools.Tools)
             {
                 try
                 {
                     McpToolRegistry.RegisterTool(tool.Name, new PrismMcpTool(tool), tool.Description,
                         enabledByDefault: true, groups: new[] { "Prism" });
-                    registered++;
                 }
                 catch (System.Exception e)
                 {
                     UnityEngine.Debug.LogError($"[Prism] Could not register MCP tool {tool.Name}: {e}");
                 }
             }
-            UnityEngine.Debug.Log($"[Prism] Registered {registered} MCP tools.");
         }
     }
 
