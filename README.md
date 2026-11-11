@@ -82,6 +82,8 @@ tools\deploy_dev.ps1
 
 This adds `Unity/` to `%USERPROFILE%\Documents\Prism2\PluginPaths.json`. A backup of the original is kept as `PluginPaths.json.bak`, and `tools\deploy_dev.ps1 -Remove` undoes the change.
 
+Then restart Prism (tray icon → **Exit**, and start it again). Prism reads its plugin list only at startup, so a Prism that was already running won't show **Unity** under **DCC apps** until it restarts.
+
 You can also add the same folder from the plugins section of Prism's settings.
 
 ### 2. Add it to a Unity project (once per project)
