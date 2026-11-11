@@ -1,0 +1,22 @@
+# Unity (TestProject and any Unity project in this repo)
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Bb]uild/
+[Bb]uilds/
+*.csproj
+*.sln
+*.suo
+*.user
+.vs/
+.idea/
+TestResults/
+
+# Python
+__pycache__/
+*.pyc
+
+# Prism dev backups
+*.bak
