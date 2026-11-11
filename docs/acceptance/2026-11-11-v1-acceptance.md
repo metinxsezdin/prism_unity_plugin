@@ -6,7 +6,7 @@
 
 **Otomatik test durumu (`tools/run_all_tests.ps1 -E2E`):**
 - Python: tüm testler geçti.
-- Unity EditMode: 92/92.
+- Unity EditMode: 104/104.
 - Gerçek Prism ile uçtan uca testler: 9/9.
 
 ## Spec §10 kabul senaryoları

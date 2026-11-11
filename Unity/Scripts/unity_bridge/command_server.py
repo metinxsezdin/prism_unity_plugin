@@ -23,7 +23,10 @@ class CommandServer(object):
         self.handle = handle
         self.run_on_main = run_on_main
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._sock.bind((HOST, int(port)))
+        try:
+            self._sock.bind((HOST, int(port)))
+        except OSError:
+            self._sock.bind((HOST, 0))  # taken: use any free port; the launcher publishes the real one
         self._sock.listen(8)
         self.address = self._sock.getsockname()
         self.port = self.address[1]

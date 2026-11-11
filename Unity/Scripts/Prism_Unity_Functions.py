@@ -52,7 +52,7 @@ def unity_client_from_env(environ=None):
     token = environ.get("PRISM_UNITY_TOKEN")
     if not port or not token:
         return None
-    return UnityClient(int(port), token)
+    return UnityClient(int(port), token, project=environ.get("PRISM_UNITY_PROJECT") or None)
 
 
 class Prism_Unity_Functions(object):

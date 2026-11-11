@@ -43,7 +43,7 @@ namespace Prism.Unity.Editor
             PrismProcess.CheckInstalled(ctx); // fails fast with prism_unavailable
             try
             {
-                return Call(ctx.Session, cmd, args, interactive, timeout);
+                return Call(ctx, cmd, args, interactive, timeout);
             }
             catch (Exception e) when (PrismWentAway(e))
             {
@@ -51,7 +51,7 @@ namespace Prism.Unity.Editor
                 PrismProcess.ForgetExitedProcess();
                 PrismProcess.EnsureRunning(ctx);
                 WaitUntilReady(ctx);
-                return Call(ctx.Session, cmd, args, interactive, timeout);
+                return Call(ctx, cmd, args, interactive, timeout);
             }
         }
 
@@ -71,7 +71,7 @@ namespace Prism.Unity.Editor
             {
                 try
                 {
-                    Call(ctx.Session, "ping", null, false, TimeSpan.FromSeconds(5));
+                    Call(ctx, "ping", null, false, TimeSpan.FromSeconds(5));
                     return;
                 }
                 catch (Exception e) when (PrismWentAway(e) || e is IOException) { }
@@ -83,12 +83,13 @@ namespace Prism.Unity.Editor
                 $"Prism did not start within {StartupTimeout.TotalSeconds:0} s.");
         }
 
-        static JToken Call(SessionInfo s, string cmd, JObject args, bool interactive, TimeSpan timeout)
+        static JToken Call(LaunchContext ctx, string cmd, JObject args, bool interactive, TimeSpan timeout)
         {
+            var s = ctx.Session;
             var request = PrismRequest.Create(cmd, args, s.Token, interactive);
             using (var client = new TcpClient())
             {
-                var connect = client.ConnectAsync("127.0.0.1", s.PrismPort);
+                var connect = client.ConnectAsync("127.0.0.1", PrismEndpoint.ReadPrismPort(ctx.ProjectRoot) ?? s.PrismPort);
                 try
                 {
                     if (!connect.Wait(TimeSpan.FromSeconds(5)) || !client.Connected)

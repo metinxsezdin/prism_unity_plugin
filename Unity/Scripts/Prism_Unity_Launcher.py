@@ -59,6 +59,7 @@ def main():
 
     from unity_bridge.command_server import CommandServer
     from unity_bridge.commands import PrismCommands
+    from unity_bridge.endpoint import write_prism_endpoint
     from unity_bridge.projects import pin_project
     from unity_bridge.unity_client import UnityClient
 
@@ -109,12 +110,14 @@ def main():
 
         install_fail_on_dialog(QDialog, QMessageBox)
 
-    unity = UnityClient(int(env["PRISM_UNITY_PORT"]), env["PRISM_UNITY_TOKEN"])
+    unity = UnityClient(int(env["PRISM_UNITY_PORT"]), env["PRISM_UNITY_TOKEN"], project=unity_project)
     pcore.appPlugin.unity = unity
     commands = PrismCommands(pcore, unity)
     invoker = MainThreadInvoker()
-    server = CommandServer(int(env["PRISM_UNITY_PRISM_PORT"]), env["PRISM_UNITY_TOKEN"], commands.dispatch, invoker)
+    server = CommandServer(int(env.get("PRISM_UNITY_PRISM_PORT") or 0), env["PRISM_UNITY_TOKEN"], commands.dispatch, invoker)
     server.start()
+    # Publish the port actually bound (the suggested one may have been taken meanwhile).
+    write_prism_endpoint(unity_project, server.port, os.getpid())
 
     unity_pid = int(env.get("PRISM_UNITY_PID", "0") or 0)
 

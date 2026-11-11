@@ -3,16 +3,24 @@
 import socket
 
 from . import protocol
+from .endpoint import read_unity_endpoint
 from .protocol import BridgeError
 
 HOST = "127.0.0.1"
 
 
 class UnityClient(object):
-    def __init__(self, port, token, timeout=10.0):
+    def __init__(self, port, token, timeout=10.0, project=None):
         self.port = int(port)
         self.token = token
         self.timeout = timeout
+        self.project = project  # Unity project root: follow its session.json when set
+
+    def _refresh_endpoint(self):
+        if self.project:
+            current = read_unity_endpoint(self.project)
+            if current:
+                self.port, self.token = current
 
     def call(self, cmd, args=None, interactive=False, timeout=None):
         """Send one command to the Unity editor and return its result.
@@ -22,6 +30,7 @@ class UnityClient(object):
         editor cannot be reached at all.
         """
         timeout = self.timeout if timeout is None else timeout
+        self._refresh_endpoint()  # Unity may have moved to another port after a domain reload
         # Unity enforces its own limit from _timeoutSec (10 s by default); send ours so long
         # calls (playblast, big imports, scene saves) are not cut off on the Unity side.
         args = dict(args or {}, _timeoutSec=timeout)
