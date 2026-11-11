@@ -79,6 +79,71 @@ def ask_comment():
     return comment if ok else None
 
 
+def run_playblast(cmds, request):
+    """Prism-started playblast. Unity must not call back into Prism while Prism waits on it, so:
+    ask Unity for the context, resolve the Prism output here, let Unity render, then register it."""
+    context = cmds.unity.call("playblastContext", request, interactive=True)
+    entity, task = context["entity"], request.get("task") or context["task"]
+    extension = ".mp4" if request.get("format") == "mp4" else ".png"
+    target = cmds.playblastTarget(entity, task, extension, request.get("comment", ""))
+    sent = dict(request, entity=entity, task=task, outputPath=target["path"])
+    result = cmds.unity.call("playblast", sent, interactive=True, timeout=600)
+    cmds.playblastDone(result["outputPath"], entity, task, request.get("comment", ""),
+                       {k: request.get(k) for k in ("mode", "frames", "fps", "width", "height", "format")})
+    return dict(result, version=target["version"])
+
+
+def open_playblast_dialog(cmds):
+    from qtpy.QtWidgets import (QComboBox, QDialog, QDialogButtonBox, QFormLayout, QLineEdit, QSpinBox)
+
+    cameras = cmds.unity.call("listCameras") or []
+    dlg = QDialog()
+    dlg.setWindowTitle("Unity Playblast")
+    form = QFormLayout(dlg)
+    mode = QComboBox()
+    mode.addItem("Turntable of the selected objects", "turntable")
+    mode.addItem("Scene camera", "free")
+    camera = QComboBox()
+    for cam in cameras:
+        camera.addItem(cam["name"], cam["path"])
+    width, height, frames, fps = QSpinBox(), QSpinBox(), QSpinBox(), QSpinBox()
+    for box, lo, hi, val in ((width, 16, 8192, 1920), (height, 16, 8192, 1080), (frames, 1, 10000, 120), (fps, 1, 240, 30)):
+        box.setRange(lo, hi)
+        box.setValue(val)
+    fmt = QComboBox()
+    fmt.addItem("Image sequence (PNG)", "png")
+    fmt.addItem("Video (MP4)", "mp4")
+    comment = QLineEdit()
+    for label, widget in (("Mode", mode), ("Camera", camera), ("Width", width), ("Height", height),
+                          ("Frames", frames), ("FPS", fps), ("Format", fmt), ("Comment", comment)):
+        form.addRow(label, widget)
+    camera.setEnabled(False)
+    mode.currentIndexChanged.connect(lambda _: camera.setEnabled(mode.currentData() == "free"))
+    buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+    form.addRow(buttons)
+
+    def accept():
+        request = {"mode": mode.currentData(), "width": width.value(), "height": height.value(),
+                   "frames": frames.value(), "fps": fps.value(), "format": fmt.currentData(), "comment": comment.text()}
+        if request["mode"] == "free":
+            request["cameraPath"] = camera.currentData()
+        dlg.close()
+        try:
+            result = run_playblast(cmds, request)
+        except BridgeError as e:
+            cmds.core.popup(e.message, title="Unity Playblast")
+            return
+        cmds.core.popup("Playblast %s saved:\n%s" % (result["version"], result["outputPath"]), title="Unity Playblast", severity="info")
+
+    buttons.accepted.connect(accept)
+    buttons.rejected.connect(dlg.close)
+    dlg.finished.connect(lambda _: _open_windows.remove(dlg) if dlg in _open_windows else None)
+    _open_windows.append(dlg)
+    dlg.show()
+    dlg.raise_()
+    dlg.activateWindow()
+
+
 def entity_from_product_data(data):
     return {k: data[k] for k in ("type", "asset_path", "sequence", "shot") if data.get(k)}
 

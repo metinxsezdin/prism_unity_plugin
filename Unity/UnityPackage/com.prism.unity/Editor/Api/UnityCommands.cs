@@ -52,6 +52,7 @@ namespace Prism.Unity.Editor
             }, false);
             RegisterImport();
             SceneVersioning.Register();
+            PlayblastRunner.Register();
         }
 
         // Prism's import windows call these with the version already resolved (args.resolved):

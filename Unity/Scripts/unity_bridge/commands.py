@@ -150,6 +150,42 @@ class PrismCommands(object):
                 return None
             raise
 
+    # --- playblasts -----------------------------------------------------------
+
+    PLAYBLAST_EXTENSIONS = (".png", ".mp4")
+
+    def playblastTarget(self, entity, task, extension, comment=""):
+        """Next versioned Prism playblast path. Image sequences get a #### frame token."""
+        if extension not in self.PLAYBLAST_EXTENSIONS:
+            raise BridgeError("bad_args", "Playblast format must be one of %s." % ", ".join(self.PLAYBLAST_EXTENSIONS))
+        details = self.core.mediaProducts.generatePlayblastPath(
+            entity=entity, task=task, extension=extension, framePadding="####" if extension == ".png" else "",
+            comment=comment, returnDetails=True,
+        )
+        return {"path": details["path"].replace("\\", "/"), "version": details.get("version")}
+
+    def playblastDone(self, path, entity, task, comment="", details=None):
+        """Write the version info that makes the playblast show up in Prism's media browser."""
+        import time
+
+        info = dict(details or {})
+        info.update(
+            comment=comment,
+            source="Unity",
+            user=getattr(self.core, "user", ""),
+            username=getattr(self.core, "username", ""),
+            date=time.strftime("%d.%m.%y %X"),
+        )
+        info_path = self.core.mediaProducts.getPlayblastVersionInfoPathFromFilepath(path)
+        self.core.setConfig(data=info, configPath=info_path)
+        return {"ok": True, "versionInfo": info_path.replace("\\", "/")}
+
+    def playblastDialog(self):
+        from . import dialogs
+
+        dialogs.open_playblast_dialog(self)
+        return True
+
     # --- products ------------------------------------------------------------
 
     def listProducts(self, entity):
