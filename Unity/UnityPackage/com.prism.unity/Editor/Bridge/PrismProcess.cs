@@ -110,9 +110,13 @@ namespace Prism.Unity.Editor
             }
         }
 
-        /// <summary>Stops the Prism process this domain started (used by tests).</summary>
+        /// <summary>Test hook: called whenever StopOwnedProcess runs.</summary>
+        public static System.Action StopObserver;
+
+        /// <summary>Stops the Prism process this domain started.</summary>
         public static void StopOwnedProcess()
         {
+            StopObserver?.Invoke();
             lock (Lock)
             {
                 try
