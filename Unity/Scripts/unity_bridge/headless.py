@@ -3,6 +3,7 @@
 import contextlib
 import hashlib
 import os
+import sys
 
 from .protocol import BridgeError
 
@@ -18,27 +19,34 @@ def headless(core):
     added_silent = "silent" not in core.prismArgs
     if added_silent:
         core.prismArgs.append("silent")
-    had_popup = "popup" in vars(core)
-    had_question = "popupQuestion" in vars(core)
-    original_popup = core.popup
-    original_question = core.popupQuestion
-
     def refuse(text, *args, **kwargs):
         raise BridgeError("needs_input", str(text), {"dialog": str(kwargs.get("title") or "")})
 
-    core.popup = refuse
-    core.popupQuestion = refuse
+    def surface_error(text, *args, **kwargs):
+        # Prism's err_catcher swallows exceptions and reports them through
+        # writeErrorLog (a dialog). Re-raise instead so the caller gets the error.
+        current = sys.exc_info()[1]
+        if isinstance(current, BridgeError):
+            raise current
+        raise BridgeError("internal", str(text).strip().splitlines()[-1] if str(text).strip() else "Prism error")
+
+    patches = {"popup": refuse, "popupQuestion": refuse}
+    if hasattr(core, "writeErrorLog"):
+        patches["writeErrorLog"] = surface_error
+    saved = {name: (name in vars(core), getattr(core, name)) for name in patches}
+    saved_error_time = getattr(core, "lastErrorTime", None)
+    for name, fn in patches.items():
+        setattr(core, name, fn)
+    if saved_error_time is not None:
+        core.lastErrorTime = 0
     try:
         yield
     finally:
-        if had_popup:
-            core.popup = original_popup
-        else:
-            del core.popup
-        if had_question:
-            core.popupQuestion = original_question
-        else:
-            del core.popupQuestion
+        for name, (was_instance_attr, original) in saved.items():
+            if was_instance_attr:
+                setattr(core, name, original)
+            else:
+                delattr(core, name)
         if added_silent and "silent" in core.prismArgs:
             core.prismArgs.remove("silent")
 

@@ -13,7 +13,10 @@ $uargs = @("-batchmode", "-projectPath", (Join-Path $repo "TestProject"), "-runT
           "-testResults", $xml, "-logFile", $log)
 if ($Filter) { $uargs += @("-testFilter", $Filter) }
 if ($Category) { $uargs += @("-testCategory", $Category) } else { $uargs += @("-testCategory", "!E2E") }
-$p = Start-Process -FilePath $unity -ArgumentList $uargs -Wait -PassThru -NoNewWindow
+# Wait for Unity.exe itself only: -Wait would also wait for helper processes Unity leaves running.
+$quoted = $uargs | ForEach-Object { if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ } }
+$p = Start-Process -FilePath $unity -ArgumentList $quoted -PassThru -NoNewWindow
+$p.WaitForExit()
 if (-not (Test-Path $xml)) {
     Write-Host "No test results written (exit $($p.ExitCode)). Last log lines:"
     Get-Content $log -Tail 40
