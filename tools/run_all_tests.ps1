@@ -8,10 +8,10 @@ $py = $LASTEXITCODE
 Write-Host ("python: " + $(if ($py -eq 0) { "OK" } else { "FAILED (run tools/run_py_tests.ps1 for details)" }))
 & (Join-Path $PSScriptRoot "run_unity_tests.ps1")
 $unity = $LASTEXITCODE
-$e2e = 0
+$e2eCode = 0
 if ($E2E) {
     & (Join-Path $PSScriptRoot "run_unity_tests.ps1") -Category E2E
-    $e2e = $LASTEXITCODE
+    $e2eCode = $LASTEXITCODE
 }
-if ($py -ne 0 -or $unity -ne 0 -or $e2e -ne 0) { exit 1 }
+if ($py -ne 0 -or $unity -ne 0 -or $e2eCode -ne 0) { exit 1 }
 exit 0
