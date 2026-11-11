@@ -12,5 +12,7 @@ $boot = "import os,sys,unittest; r=os.environ['PRISM_UNITY_REPO']; " +
         "sys.path[:0]=[os.path.join(r,'Unity','Scripts'), os.path.join(r,'tests','python')]; " +
         "suite=unittest.defaultTestLoader.discover(os.path.join(r,'tests','python'), pattern=sys.argv[1], top_level_dir=os.path.join(r,'tests','python')); " +
         "res=unittest.TextTestRunner(verbosity=2).run(suite); sys.exit(0 if res.wasSuccessful() else 1)"
+# unittest reports on stderr; with "Stop" a redirected stderr line would abort this script.
+$ErrorActionPreference = "Continue"
 & $python -c $boot $Pattern
 exit $LASTEXITCODE
