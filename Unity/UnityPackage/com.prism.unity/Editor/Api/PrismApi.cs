@@ -12,6 +12,16 @@ namespace Prism.Unity.Editor
     /// </summary>
     public static partial class PrismApi
     {
+        /// <summary>
+        /// Refuse project-changing work while Unity is in Play Mode (same rule as the Prism → Unity
+        /// command server). Must run on the main thread.
+        /// </summary>
+        internal static void EnsureEditable()
+        {
+            if (PrismSession.IsPlaying())
+                throw new PrismCommandException(ErrorCodes.UnityBusy, "Unity is in Play Mode; leave Play Mode and try again.");
+        }
+
         /// <summary>Send an interactive command to Prism (Prism may open its own windows).</summary>
         public static Task<JToken> RunInteractive(string cmd, JObject args = null) =>
             PrismClient.SendAsync(cmd, args, interactive: true);

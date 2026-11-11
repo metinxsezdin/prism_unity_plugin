@@ -15,6 +15,7 @@ namespace Prism.Unity.Editor
         public static async Task<JObject> SaveVersion(string comment = "", PrismEntity entity = null, string department = null,
             string task = null, bool createDepartment = false, bool interactive = false)
         {
+            EnsureEditable();
             var args = new JObject { ["comment"] = comment ?? "", ["createDepartment"] = createDepartment, ["_timeoutSec"] = 300 };
             if (entity != null) args["entity"] = entity.ToJson();
             if (!string.IsNullOrEmpty(department)) args["department"] = department;
@@ -27,9 +28,10 @@ namespace Prism.Unity.Editor
         /// unsaved: "abort" | "save" | "discard". Needs no Prism call; returns {workingPath}.
         /// </summary>
         public static Task<JObject> OpenSceneVersion(string prismScenePath, string unsaved = "abort", bool confirmForeign = false) =>
-            MainThreadDispatcher.Run(() => new JObject
+            MainThreadDispatcher.Run(() =>
             {
-                ["workingPath"] = SceneVersioning.OpenFrom(prismScenePath, unsaved, null, confirmForeign),
+                EnsureEditable();
+                return new JObject { ["workingPath"] = SceneVersioning.OpenFrom(prismScenePath, unsaved, null, confirmForeign) };
             }, TimeSpan.FromMinutes(5));
     }
 }

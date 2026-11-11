@@ -50,6 +50,8 @@ namespace Prism.Unity.Editor
                 SessionState.SetInt(FpsKey, fps);
                 return true;
             }, false);
+            // Marked as project-changing, so the server answers unity_busy in Play Mode.
+            CommandRegistry.Register("assertEditable", (a, c) => true, true);
             RegisterImport();
             SceneVersioning.Register();
             PlayblastRunner.Register();

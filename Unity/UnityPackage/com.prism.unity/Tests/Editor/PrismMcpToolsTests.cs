@@ -110,6 +110,37 @@ namespace Prism.Unity.Editor.Tests
             Assert.AreEqual(1, ((JArray)r[0]["result"]).Count);
         }
 
+        [UnityTest]
+        public IEnumerator ProjectChangingToolsAreRefusedInPlayMode()
+        {
+            var r = new JObject[1];
+            yield return Run("prism_import", new JObject { ["entity"] = Lotus, ["product"] = "lotus_model", ["version"] = "v0001" }, r);
+            Assert.IsTrue((bool)r[0]["ok"], r[0].ToString());
+            _calls.Clear();
+            PrismSession.PlayModeOverride = true;
+            try
+            {
+                var calls = new[]
+                {
+                    ("prism_import", new JObject { ["entity"] = Lotus, ["product"] = "lotus_model", ["version"] = "v0002" }),
+                    ("prism_update", new JObject { ["recordId"] = "Props__Lotus__lotus_model", ["version"] = "v0002" }),
+                    ("prism_open_scene_version", new JObject { ["path"] = "C:/nowhere/x_v0001.unity", ["unsaved"] = "discard" }),
+                    ("prism_save_version", new JObject { ["comment"] = "x", ["entity"] = Lotus, ["task"] = "layout" }),
+                };
+                foreach (var (tool, args) in calls)
+                {
+                    yield return Run(tool, args, r);
+                    Assert.AreEqual("unity_busy", (string)r[0]["error"]?["code"], tool + ": " + r[0]);
+                }
+                Assert.AreEqual(0, _calls.Count, "Nothing may reach Prism while Unity is in Play Mode.");
+                Assert.AreEqual("v0001", ImportRecord.Load("Props__Lotus__lotus_model").Version);
+            }
+            finally
+            {
+                PrismSession.PlayModeOverride = null;
+            }
+        }
+
         [Test]
         public void EveryToolHasDescriptionAndObjectSchema()
         {

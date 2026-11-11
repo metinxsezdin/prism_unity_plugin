@@ -84,6 +84,8 @@ class PrismCommands(object):
     DEFAULT_DEPARTMENT = "Unity"
 
     def saveVersion(self, comment="", entity=None, department=None, task=None, createDepartment=False):
+        # Fail in Play Mode before anything is created in Prism (department, category, files).
+        self.unity.call("assertEditable")
         binding = self.unity.call("getSceneBinding") or {}
         entity = entity or binding.get("entity")
         task = task or binding.get("task")

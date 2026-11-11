@@ -3,6 +3,7 @@ import unittest
 from fakes import FakeCore
 from unity_bridge import protocol
 from unity_bridge.commands import PrismCommands
+from unity_bridge.protocol import BridgeError
 
 ROOM = {"type": "asset", "asset_path": "Scenes/MeditationRoom"}
 
@@ -13,6 +14,7 @@ class SceneUnity:
     def __init__(self, binding=None):
         self.binding = binding
         self.calls = []
+        self.playing = False
 
     def call(self, cmd, args=None, interactive=False, timeout=None):
         self.calls.append((cmd, args))
@@ -23,6 +25,10 @@ class SceneUnity:
                             "entity": args["entity"], "department": args["department"], "task": args["task"],
                             "lastPrismPath": None}
             return self.binding
+        if cmd == "assertEditable":
+            if self.playing:
+                raise BridgeError("unity_busy", "Unity is in Play Mode")
+            return True
         if cmd == "getProjectInfo":
             return {"projectPath": "C:/Proj", "productGuid": "abc-123"}
         if cmd == "saveSceneTo":
@@ -125,6 +131,14 @@ class SceneSaveTests(unittest.TestCase):
         self.assertTrue(resp["ok"], resp)
         self.assertIn(("department", "Unity"), core.entities.created)
         self.assertEqual(len(core.saved), 1)
+
+    def test_play_mode_refused_before_any_prism_change(self):
+        core, unity, cmds = self.make(steps=())
+        unity.playing = True
+        resp = self.call(cmds, "saveVersion", entity=ROOM, task="layout", createDepartment=True)
+        self.assertEqual(resp["error"]["code"], "unity_busy")
+        self.assertEqual(core.entities.created, [], "no department/category may be created in Play Mode")
+        self.assertEqual(core.saved, [])
 
     def test_second_save_uses_binding(self):
         core, unity, cmds = self.make()

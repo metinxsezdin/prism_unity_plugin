@@ -17,16 +17,26 @@ namespace Prism.Unity.Editor
         /// </summary>
         public static async Task<ImportResult> ImportProduct(PrismEntity entity, string product, string version = "latest", bool confirm = false)
         {
+            EnsureEditable();
             var resolved = await Resolve(entity, product, version);
-            return await MainThreadDispatcher.Run(() => ProductImporter.ImportResolved(entity, product, resolved, confirm), ImportTimeout);
+            return await MainThreadDispatcher.Run(() =>
+            {
+                EnsureEditable();
+                return ProductImporter.ImportResolved(entity, product, resolved, confirm);
+            }, ImportTimeout);
         }
 
         /// <summary>Update an imported product (by its record id) to another version, "latest" by default.</summary>
         public static async Task<ImportResult> UpdateProduct(string recordId, string version = "latest", bool confirm = false)
         {
+            EnsureEditable();
             var record = RequireRecord(recordId);
             var resolved = await Resolve(record.Entity, record.Product, version);
-            return await MainThreadDispatcher.Run(() => ProductImporter.ImportResolved(record.Entity, record.Product, resolved, confirm), ImportTimeout);
+            return await MainThreadDispatcher.Run(() =>
+            {
+                EnsureEditable();
+                return ProductImporter.ImportResolved(record.Entity, record.Product, resolved, confirm);
+            }, ImportTimeout);
         }
 
         public static IReadOnlyList<ImportRecord> ListImported() => ImportRecord.LoadAll();
