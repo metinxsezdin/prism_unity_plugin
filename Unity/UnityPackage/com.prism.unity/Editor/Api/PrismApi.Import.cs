@@ -41,13 +41,32 @@ namespace Prism.Unity.Editor
 
         public static IReadOnlyList<ImportRecord> ListImported() => ImportRecord.LoadAll();
 
-        /// <summary>Imported products that have a newer version in Prism: [{id, current, latest, entity, product}].</summary>
+        /// <summary>
+        /// Raised on the main thread with the record ids whose product no longer exists in Prism.
+        /// The packaging assembly flags their definitions; nothing is ever deleted.
+        /// </summary>
+        public static event Action<IReadOnlyList<string>> MissingReported;
+
+        /// <summary>
+        /// Imported products that have a newer version in Prism: [{id, current, latest, entity, product}],
+        /// plus [{id, missing: true, entity, product}] for products that disappeared from Prism.
+        /// </summary>
         public static async Task<JArray> CheckForUpdates()
         {
             var records = JArray.FromObject(ListImported());
             if (records.Count == 0) return new JArray();
-            return (JArray)await PrismClient.SendAsync("checkVersions", new JObject { ["records"] = records }, interactive: false,
+            var result = (JArray)await PrismClient.SendAsync("checkVersions", new JObject { ["records"] = records }, interactive: false,
                 timeout: TimeSpan.FromSeconds(60));
+            var missing = result.OfType<JObject>().Where(e => (bool?)e["missing"] == true).Select(e => (string)e["id"])
+                .Where(id => !string.IsNullOrEmpty(id)).ToList();
+            if (missing.Count > 0 && MissingReported != null)
+                await MainThreadDispatcher.Run(() =>
+                {
+                    try { MissingReported?.Invoke(missing); }
+                    catch (Exception e) { UnityEngine.Debug.LogException(e); }
+                    return true;
+                }, TimeSpan.FromSeconds(60));
+            return result;
         }
 
         public static async Task<JArray> ListProducts(PrismEntity entity) =>
