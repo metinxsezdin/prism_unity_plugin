@@ -74,6 +74,17 @@ class DialogFlowTests(unittest.TestCase):
         self.assertEqual(args["product"], "lotus_model")
         self.assertEqual(args["version"], "v0002")
 
+    def test_missing_products_are_marked_in_unity(self):
+        cmds = Cmds(AnswerCore(dialogs.CANCEL), ScriptedUnity(True))
+        entries = [{"id": "Props__Lotus__gone", "missing": True}, {"id": "Props__Lotus__lotus_model", "current": "v1", "latest": "v2"}]
+        dialogs.run_mark_missing(cmds, entries)
+        self.assertEqual(cmds.unity.calls, [("setPrismMissing", {"ids": ["Props__Lotus__gone"], "missing": True}, True)])
+
+    def test_nothing_missing_sends_nothing(self):
+        cmds = Cmds(AnswerCore(dialogs.CANCEL), ScriptedUnity())
+        dialogs.run_mark_missing(cmds, [{"id": "a", "current": "v1", "latest": "v2"}])
+        self.assertEqual(cmds.unity.calls, [])
+
     def test_entity_from_product_data(self):
         data = {"type": "asset", "asset_path": "Props/Lotus", "product": "lotus_model", "version": "v0002", "user": "adm"}
         self.assertEqual(dialogs.entity_from_product_data(data), {"type": "asset", "asset_path": "Props/Lotus"})

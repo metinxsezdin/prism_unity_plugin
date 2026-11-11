@@ -144,6 +144,14 @@ def open_playblast_dialog(cmds):
     dlg.activateWindow()
 
 
+def run_mark_missing(cmds, entries):
+    """Tell Unity which packages' products disappeared from Prism (nothing is deleted)."""
+    ids = [e["id"] for e in entries if e.get("missing")]
+    if ids:
+        cmds.unity.call("setPrismMissing", {"ids": ids, "missing": True}, interactive=True)
+    return ids
+
+
 def entity_from_product_data(data):
     return {k: data[k] for k in ("type", "asset_path", "sequence", "shot") if data.get(k)}
 
@@ -178,13 +186,18 @@ def open_import_browser(cmds):
     browser.activateWindow()
 
 
-def open_check_versions(cmds, outdated):
+def open_check_versions(cmds, outdated, missing=()):
     from qtpy.QtCore import Qt
     from qtpy.QtWidgets import QDialog, QDialogButtonBox, QLabel, QListWidget, QListWidgetItem, QVBoxLayout
 
     dlg = QDialog()
     dlg.setWindowTitle("Prism: new versions for Unity")
     layout = QVBoxLayout(dlg)
+    if missing:
+        names = ", ".join(e["id"] for e in missing)
+        note = QLabel("No longer in Prism (kept in Unity, marked as missing): %s" % names)
+        note.setWordWrap(True)
+        layout.addWidget(note)
     layout.addWidget(QLabel("These Prism products have newer versions than the ones in this Unity project:"))
     items = QListWidget()
     for entry in outdated:
