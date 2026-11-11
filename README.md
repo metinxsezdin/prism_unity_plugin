@@ -1,47 +1,109 @@
-# Prism ↔ Unity Entegrasyonu
+# Prism ↔ Unity
 
-Prism Pipeline 2 için Unity eklentisi. Maya ve Blender'dan Prism'e yayımlanan modeller Unity'ye versiyonlu gelir. Unity sahneleri Prism'de versiyonlanır, turntable ve kamera kayıtları Prism'in medya tarayıcısına yazılır. Bu işlerin hepsi hem Unity'deki **Prism** menüsünden hem de Claude'dan (Unity MCP üzerinden) yapılabilir.
+A Unity integration for [Prism Pipeline](https://github.com/PrismPipeline/Prism) 2. Models published to Prism from Maya or Blender come into Unity with their version, and stay updatable in place. Unity scenes are saved as Prism versions, and turntables and camera playblasts are published to Prism's media browser.
 
-- Tasarım: [docs/superpowers/specs/2026-11-11-prism-unity-entegrasyonu-design.md](docs/superpowers/specs/2026-11-11-prism-unity-entegrasyonu-design.md)
-- Claude araç rehberi: [Unity/UnityPackage/com.prism.unity/Documentation~/CLAUDE_TOOLS.md](Unity/UnityPackage/com.prism.unity/Documentation~/CLAUDE_TOOLS.md)
+Everything can be done from a **Prism** menu in the Unity editor, or by Claude through Unity MCP.
 
-## Gereksinimler
+Tested on Windows 11 with Prism 2.1.2.1 and Unity 6000.5.6f1 (URP).
+
+## What it does
+
+- **Import products.** Bring any version of a Prism product (`.fbx`, `.obj`, `.abc`) into `Assets/Prism/<entity>/<product>/`. The path never contains a version number.
+- **Update in place.**
+  - A new version overwrites the same file and keeps its `.meta`.
+  - Material remaps, prefab links and scene placement survive the update.
+  - If the new version renames or removes objects or material slots, the update stops and shows the differences before anything changes.
+  - A change of file format (e.g. FBX → OBJ) also asks first.
+- **Check for new versions.**
+  - Lists imported products that have a newer version in Prism, including products imported as Prism `master`.
+  - Runs on editor start when Prism's "check import versions" setting is on.
+- **Version scenes.**
+  - *Save Version* writes the working scene (which stays in `Assets/`) to Prism's scene folder as the next version, with a comment.
+  - Opening an old version from Prism's Project Browser brings it back into the working path. It refuses to overwrite work that isn't saved as a Prism version unless you explicitly discard it.
+- **Publish playblasts.**
+  - *Turntable* orbits the selected objects in an isolated preview scene, so your scene is never touched.
+  - *Camera* records any scene camera and steps Timelines frame by frame.
+  - Output is a PNG sequence or MP4, written as a versioned Prism media product.
+- **Work with Claude.**
+  - Ten MCP tools expose the same operations.
+  - Calls coming from Claude never open a window. Anything that needs a decision comes back as a question for the user.
+
+## How it works
+
+The plugin has two halves that talk to each other over `127.0.0.1`:
+
+```
+Unity editor                                   Prism process (Python + Qt)
+┌──────────────────────────────┐              ┌──────────────────────────────┐
+│ com.prism.unity (C#, Editor) │  JSON lines  │ Prism "Unity" app plugin     │
+│  Prism menu / MCP tools      │ ───────────► │  Prism_Unity_Launcher.py     │
+│  PrismApi                    │ ◄─────────── │  unity_bridge/commands.py    │
+│  command server              │   + token    │  PrismCore                   │
+└──────────────────────────────┘              └──────────────────────────────┘
+```
+
+**Prism process**
+- Unity has no Python, so Prism runs as its own process, the same way Prism's After Effects and Photoshop plugins work.
+- Unity starts it on first use, one instance per Unity project, and it quits when the editor closes.
+
+**Protocol**
+- One JSON object per line.
+- Every request carries a per-session token.
+- Each side accepts only a fixed list of commands. Nothing received over the socket is executed as code.
+
+**Ports**
+- Neither side reserves a port.
+- Each side binds whatever port is free and publishes it in the Unity project's `Library/PrismUnity/` folder: `session.json` for Unity, `prism.json` for Prism.
+
+**Deadlock rule**
+- The side that is waiting is never called back.
+- When Prism starts an import or a playblast, it resolves the file or output path itself before calling Unity.
+
+**Pinned project**
+- A Unity project is pinned to one Prism project in `ProjectSettings/PrismUnity/project.json`.
+- The plugin never changes which project Prism, Maya or Blender open by default.
+
+## Requirements
 
 - Windows
-- Prism Pipeline 2.1.x, `C:\Program Files\Prism2` altında kurulu (Maya ve Blender eklentileriyle birlikte)
-- Unity `6000.5.6f1`, URP
-- Claude ile kullanım için Unity projesinde **Unity AI Assistant** paketi (`com.unity.ai.assistant`) ve Claude'da `unity-mcp` bağlantısı
+- Prism Pipeline 2.1.x installed in `C:\Program Files\Prism2`
+- Unity 6000.5 with URP
+- For Claude: the Unity AI Assistant package (`com.unity.ai.assistant`) in the Unity project and the `unity-mcp` server in your Claude client
 
-## Kurulum
+## Installation
 
-### 1. Eklentiyi Prism'e tanıt (her makinede bir kez)
+### 1. Register the plugin with Prism (once per machine)
 
-`Unity` klasörü Prism'in "Unity" eklentisidir. Bu repoyu klonladıktan sonra şu komutu çalıştır:
+The `Unity/` folder is the Prism plugin. Clone the repository, then run:
 
 ```powershell
 tools\deploy_dev.ps1
 ```
 
-Komut, `%USERPROFILE%\Documents\Prism2\PluginPaths.json` dosyasına bu klasörü ekler. İlk çalıştırmada orijinal dosyanın yedeğini `.bak` uzantısıyla alır. Kaldırmak için `tools\deploy_dev.ps1 -Remove` çalıştır.
+This adds `Unity/` to `%USERPROFILE%\Documents\Prism2\PluginPaths.json`. A backup of the original is kept as `PluginPaths.json.bak`, and `tools\deploy_dev.ps1 -Remove` undoes the change.
 
-Ekip genelinde dağıtmak için `Unity` klasörünü ortak bir yere koyup Prism ayarlarındaki eklentiler bölümünden aynı klasörü eklemek de yeterli.
+You can also add the same folder from the plugins section of Prism's settings.
 
-### 2. Unity projesine kur (her proje için bir kez)
+### 2. Add it to a Unity project (once per project)
 
-1. Prism'i aç ve ilgili Prism projesine geç.
-2. **Prism Settings → DCC apps → Unity** bölümünden Unity proje klasörünü seç: içinde `Assets`, `Packages` ve `ProjectSettings` bulunan klasör.
-3. Prism iki şey yapar:
-   - `Packages/manifest.json` dosyasına `com.prism.unity` paketini ekler.
-   - Unity projesini o anki Prism projesine bağlar. Bağlantı `ProjectSettings/PrismUnity/project.json` dosyasında tutulur.
-4. Unity'yi aç. Üst menüde **Prism** görünür.
+1. In Prism, switch to the project the Unity project belongs to.
+2. Open **Prism Settings → DCC apps → Unity** and select the Unity project folder (the one containing `Assets`, `Packages` and `ProjectSettings`).
+3. Prism adds `com.prism.unity` to `Packages/manifest.json` and pins the current Prism project.
+4. Open the project in Unity. A **Prism** menu appears.
 
-Unity projesi hangi Prism projesine bağlıysa onu kullanır. Maya'da en son hangi projeyi açtığın önemli değildir, eklenti senin Prism'deki "aktif proje" ayarını da değiştirmez.
+If Prism is installed somewhere else, set the path once in Unity: `EditorPrefs.SetString("PrismUnity.PrismRoot", @"D:\Prism2")`.
 
-Prism başka bir klasöre kuruluysa Unity'de şu kodla yeri değiştir: `EditorPrefs.SetString("PrismUnity.PrismRoot", @"D:\Prism2")`
+### 3. Version control
 
-### 3. Git ve Git LFS ayarı (Unity projesinin reposu)
+Commit the imported assets and the plugin's records so everyone works with the same versions:
 
-Import edilen modeller ve kayıtlar repoya girer, böylece herkes aynı versiyonları görür. Unity projesinin `.gitattributes` dosyasına şunları ekle:
+- `Assets/Prism/**`, including `.meta` files
+- `ProjectSettings/PrismUnity/**`:
+  - `project.json`: the pinned Prism project
+  - `imports/`: one file per imported product
+  - `scenes/`: one file per bound scene
+
+`Library/` stays out of Git, as usual. Use Git LFS for the binaries:
 
 ```
 *.fbx filter=lfs diff=lfs merge=lfs -text
@@ -50,73 +112,84 @@ Import edilen modeller ve kayıtlar repoya girer, böylece herkes aynı versiyon
 *.png filter=lfs diff=lfs merge=lfs -text
 ```
 
-Repoya girmesi gerekenler:
-- `Assets/Prism/**` (`.meta` dosyalarıyla birlikte)
-- `ProjectSettings/PrismUnity/**`: içe aktarım kayıtları (`imports/`, ürün başına bir dosya), sahne bağlantıları (`scenes/`, sahne başına bir dosya) ve proje bağlantısı (`project.json`)
+## Using the Prism menu
 
-`Library/` ise girmemeli, standart Unity `.gitignore` bunu zaten dışarıda bırakır.
-
-## Kullanım (Prism menüsü)
-
-| Menü | Ne yapar |
+| Item | What it does |
 |---|---|
-| **Project Browser** | Prism'in Project Browser'ını açar. Oradan bir sahne versiyonu açarsan Unity'de açılır. |
-| **Save Version** | Açık sahneyi Prism'e yeni versiyon olarak kaydeder. İlk kayıtta hangi Prism asset'i ve görevine ait olduğunu sorar, departman varsayılan olarak `Unity`'dir. |
-| **Save Comment...** | Aynısı, önce yorum sorar. |
-| **Import...** | Prism'in ürün tarayıcısı açılır. Seçtiğin versiyon `Assets/Prism/<entity>/<ürün>/` altına gelir. |
-| **Check for New Versions...** | Unity'deki Prism modellerinden yenisi çıkanları listeler ve seçtiklerini günceller. |
-| **Playblast...** | Seçili objelerin turntable'ını ya da bir sahne kamerasının kaydını PNG veya MP4 olarak Prism'e yazar. |
-| **Prism Settings...** | Prism ayarlarını açar. |
+| Project Browser | Opens Prism's Project Browser. Opening a Unity scene version there opens it in Unity. |
+| Save Version | Saves the active scene as the next Prism version. The first save asks for the Prism asset and task; the department defaults to `Unity`. |
+| Save Comment... | Same, asking for a comment first. |
+| Import... | Opens Prism's product browser and imports the version you pick. |
+| Check for New Versions... | Lists imported products with newer versions and updates the ones you select. |
+| Playblast... | Turntable of the selection or recording of a camera, as PNG or MP4. |
+| Prism Settings... | Opens Prism's settings. |
 
-### Güncellemede ne olur?
+**For modellers:** keep object and material names stable between exports. Renaming `Stem` to `StemMain` in Maya means material assignments on `Stem` in Unity have to be redone, which is why the update stops and asks.
 
-- **Aynı dosya yenilenir.** Model her zaman aynı yolda durur, güncellemede o dosya yenilenir. Unity'deki materyal atamaların, prefab bağlantıların ve sahnedeki yerleşim korunur.
-- **İsim değişikliğinde onay istenir.** Yeni versiyonda bir obje ya da materyal slotu yeniden adlandırılmış veya silinmişse, örneğin `Stem` → `StemMain`, güncelleme hemen uygulanmaz. Fark listesi gösterilir ve onay istenir.
-- **Modelciler için kural:** Bu yüzden Maya'da ve Blender'da export'lar arasında obje ve materyal adlarını sabit tutun.
-- **Açılışta kontrol:** Unity açılırken, Prism'de "check import versions" ayarı açıksa yeni versiyonu çıkan modeller için bir pencere gelir.
+**Scene versions:** a scene file references models, materials and shaders; it doesn't contain them. An old scene version opens correctly as long as those assets still exist in the project.
 
-### Sahne versiyonları
+## Using it with Claude
 
-- **Çalışma sahnesi:** Her zaman `Assets/` içinde durur. Her "Save Version" bu sahnenin bir kopyasını Prism'e versiyonlu olarak yazar.
-- **Eski versiyonlar:** Eski bir versiyonu Prism'den açtığında kaydedilmemiş değişiklikler için Kaydet / At / Vazgeç diye sorulur.
-- **Sınır:** Sahne dosyası modelleri, materyalleri ve shader'ları kopyalamaz, yalnızca onlara referans verir. Eski bir sahne versiyonu, kullandığı dosyalar projede durduğu sürece doğru açılır.
+With Unity AI Assistant installed and the editor open, Claude gets these tools:
 
-## Claude ile kullanım
+- `prism_list_products`, `prism_list_versions`, `prism_list_imported`
+- `prism_import`, `prism_update`, `prism_check_updates`
+- `prism_save_version`, `prism_open_scene_version`
+- `prism_playblast`, `prism_list_cameras`
 
-1. Unity projesine **Unity AI Assistant** paketini (`com.unity.ai.assistant`) ekle. Prism araçları kendiliğinden Unity MCP'ye kaydolur: `prism_import`, `prism_update`, `prism_save_version`, `prism_playblast` ve diğerleri.
-2. Claude'da `unity-mcp` bağlantısı açıkken, örneğin "Prism'deki lotus'un son versiyonunu al, sahneye koy, pembe bir URP Lit materyal ver, turntable al" diyebilirsin.
-3. **Pencere açılmaz.** Claude'un başlattığı işlemler hiçbir pencere açmaz. Bir bilgi eksikse ya da işlem iş kaybettirebilecekse, örneğin isim değişen bir güncelleme veya yeni bir departman oluşturmak gibi, Claude bunu sana sorar ve ancak onay verirsen devam eder.
-4. **Araçlar görünmezse:** **Prism → Debug → Re-register Claude (MCP) Tools** menüsünü kullan.
+A request like *"import the latest lotus, put it in the scene, give it a pink URP Lit material, take a turntable"* runs end to end.
 
-## Sorun giderme
+Claude's calls never open a window. When a decision belongs to the user, the tool returns an error instead of acting, and Claude has to ask the user before calling again:
+- `needs_input`: something is missing, such as the Prism task for a scene's first save.
+- `needs_confirmation`: the action could lose work, such as a renaming update, a new department, or overwriting unversioned scene work.
 
-- **"Prism was not found"**
-  - Prism'in kurulu olduğu klasörü kontrol et (`PrismUnity.PrismRoot`, bkz. Kurulum 2).
-- **"Unity is in Play Mode"**
-  - Sahne veya asset değiştiren işlemler Play Mode'da çalışmaz.
-- **"The Prism file is not reachable"**
-  - Prism projesinin bulunduğu sürücünün (ör. `M:`) bağlı olduğunu kontrol et.
-  - Bu durumda Unity'deki mevcut dosyaya dokunulmaz.
-- **"The Prism project of this Unity project is not reachable"**
-  - Unity projesinin bağlı olduğu Prism projesine ulaşılamıyor. Bağlantı `ProjectSettings/PrismUnity/project.json` dosyasında.
-  - Sürücünün bağlı olduğunu kontrol et. Prism bu durumda pencere açmadan durur.
-- **"Unity is not answering (it may be compiling scripts)"**
-  - Unity script derlerken Prism'den gelen çağrılar kısa süre bekler, sonra bu mesajı verir. Derleme bitince tekrar dene.
-- **Bir modelin formatı değişti (ör. FBX → OBJ)**
-  - Güncelleme onay ister. Onaylarsan Unity yeni bir asset oluşturur. Sahnelerdeki ve materyallerdeki eski bağlantılar eski asset'te kalır.
-- **Prism penceresi gelmiyor**
-  - Prism Unity'den ilk kullanımda arka planda başlar. İlk çağrı bir dakikaya kadar sürebilir.
-  - Prism çökerse bir sonraki işlemde kendiliğinden yeniden başlar.
+[`Documentation~/CLAUDE_TOOLS.md`](Unity/UnityPackage/com.prism.unity/Documentation~/CLAUDE_TOOLS.md) documents every tool, argument and error code. Claude reads it as its guide.
 
-## Geliştirme
+If the tools don't show up, use **Prism → Debug → Re-register Claude (MCP) Tools**.
 
-```powershell
-tools\run_py_tests.ps1                      # Prism tarafı birim testleri
-tools\run_unity_tests.ps1                   # Unity EditMode testleri (TestProject)
-tools\run_unity_tests.ps1 -Category E2E     # gerçek Prism + test Prism projesiyle
-tools\run_all_tests.ps1 -E2E                # hepsi
+## Troubleshooting
+
+| Message | Meaning |
+|---|---|
+| *Prism was not found at …* | Prism is not where Unity looks. Set `PrismUnity.PrismRoot` (see Installation). |
+| *The Prism project of this Unity project is not reachable* | The pinned `pipeline.json` can't be read, usually because the project drive isn't connected. Prism stops without opening a dialog. |
+| *The Prism file is not reachable* | The product version's file is missing or offline. The existing asset in `Assets/` is left untouched. |
+| *Unity is in Play Mode* | Imports, updates and scene operations are refused in Play Mode. |
+| *Unity is not answering (it may be compiling scripts)* | Prism waited for a script reload to finish and gave up. Try again. |
+
+The first call after opening Unity starts Prism and can take up to a minute. If Prism crashes, the next call starts it again.
+
+## Development
+
+```
+Unity/                          Prism plugin (pluginDirectory)
+  Scripts/Prism_Unity_*.py      Prism app plugin hooks, launcher, installer
+  Scripts/unity_bridge/         protocol, servers/clients, commands, dialogs
+  UnityPackage/com.prism.unity/ Unity editor package (Editor/, Editor.Mcp/, Tests/)
+TestProject/                    Unity 6000.5.6f1 URP project used by the tests
+tests/python/                   Prism-side unit tests (integration/ needs real Prism)
+fixtures/make_fbx.py            builds the test FBX files with Blender
+tools/                          test runners, deploy script, test Prism project builder
+docs/                           design spec, implementation plan, acceptance results
 ```
 
-Uçtan uca testler için:
-- **Test Prism projesi:** `python tools/make_test_prism_project.py` ile oluşturulur. Varsayılan konumu `%USERPROFILE%\PrismUnityTest Project`.
-- **Test FBX'leri:** Blender ile `blender -b -P fixtures/make_fbx.py -- <klasör>` komutuyla üretilir.
+Run the tests from PowerShell:
+
+```powershell
+tools\run_py_tests.ps1                    # Prism side, Prism's bundled Python
+tools\run_unity_tests.ps1                 # Unity EditMode tests in TestProject
+tools\run_unity_tests.ps1 -Category E2E   # against a real Prism and the test Prism project
+tools\run_all_tests.ps1 -E2E              # everything
+```
+
+**What the end-to-end tests need**
+- **A test Prism project:** create it with `"C:\Program Files\Prism2\Python313\python.exe" tools\make_test_prism_project.py`. It goes to `%USERPROFILE%\PrismUnityTest Project` by default.
+- **No windows:** during these tests any Prism window that tries to open fails the test (`PRISM_UNITY_FAIL_ON_DIALOG=1`). That's how "Claude never opens a window" is verified.
+- **Test FBX files:** they are generated with Blender 4.5: `blender -b --factory-startup -P fixtures/make_fbx.py -- <output folder>`.
+
+## Limitations
+
+- Windows only.
+- No export from Unity back to Prism.
+- Saving a scene version doesn't package the assets it references.
+- The Prism-side windows (installer, Import, Check for New Versions, Playblast dialog) have been exercised by hand only in part. See [`docs/acceptance`](docs/acceptance/2026-11-11-v1-acceptance.md) for what is still to be checked manually.
