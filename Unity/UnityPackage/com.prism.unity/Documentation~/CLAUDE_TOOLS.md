@@ -81,8 +81,11 @@ Save the active scene as a new Prism version.
 ### prism_open_scene_version
 Open a scene version from Prism.
 - **Arguments:** `path` (a Prism scene file), optional `unsaved` (`abort` | `save` | `discard`, default `abort`), optional `confirmForeign`.
-- **Unsaved changes:** With unsaved changes the answer is `needs_confirmation` (`reason: unsaved_changes`). Ask whether to save or
-  discard them.
+- **Unsaved changes:** With unsaved changes in any loaded scene the answer is `needs_confirmation` (`reason: unsaved_changes`).
+- **Unversioned changes:** If the working scene file holds work that is not saved as a Prism version, the answer is
+  `needs_confirmation` (`reason: unversioned_changes`). This covers work saved with Ctrl+S, or just saved with `unsaved: "save"`.
+- **What to do:** For either answer, ask the user. To keep the work, call `prism_save_version` first and then open again; to drop
+  it, call again with `"unsaved": "discard"`. `"save"` alone never protects the work, because the working file is replaced.
 - **Other projects:** A version saved from another Unity project answers `needs_confirmation` (`reason: foreign_project`).
 
 ### prism_playblast

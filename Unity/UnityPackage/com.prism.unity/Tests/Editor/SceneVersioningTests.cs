@@ -83,6 +83,18 @@ namespace Prism.Unity.Editor.Tests
         }
 
         [Test]
+        public void BindingAnUntitledSceneNeverOverwritesAnExistingFile()
+        {
+            new GameObject("First");
+            Run("bindScene", BindArgs(Room));
+            EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            new GameObject("Second");
+            var binding = Run("bindScene", BindArgs(Room));
+            Assert.AreNotEqual("Assets/Scenes/MeditationRoom/layout.unity", (string)binding["workingPath"]);
+            StringAssert.Contains("First", File.ReadAllText(Path.Combine(PrismSettings.ProjectRoot, "Assets/Scenes/MeditationRoom/layout.unity")));
+        }
+
+        [Test]
         public void BindingFileIsPerScene()
         {
             Run("bindScene", BindArgs(Room, "layout"));

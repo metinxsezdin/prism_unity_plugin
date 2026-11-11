@@ -1,7 +1,10 @@
+using System;
 using System.IO;
+using System.Linq;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEditor.SceneManagement;
+using UnityEngine.SceneManagement;
 
 namespace Prism.Unity.Editor
 {
@@ -19,6 +22,8 @@ namespace Prism.Unity.Editor
             {
                 var path = SceneBinding.DefaultWorkingPath(entity, task);
                 ProductImporter.EnsureFolder(Path.GetDirectoryName(path).Replace('\\', '/'));
+                if (File.Exists(Path.Combine(PrismSettings.ProjectRoot, path)))
+                    path = AssetDatabase.GenerateUniqueAssetPath(path); // never overwrite another scene
                 if (!EditorSceneManager.SaveScene(scene, path))
                     throw new PrismCommandException(ErrorCodes.Internal, $"Unity could not save the scene to {path}.");
             }
@@ -78,23 +83,40 @@ namespace Prism.Unity.Editor
                 working = SceneBinding.DefaultWorkingPath(entity, task);
             }
 
-            var active = EditorSceneManager.GetActiveScene();
-            if (active.isDirty)
+            // Every loaded scene is replaced, not only the active one.
+            var dirty = Enumerable.Range(0, SceneManager.sceneCount).Select(SceneManager.GetSceneAt)
+                .Where(s => s.isLoaded && s.isDirty).ToList();
+            if (dirty.Count > 0)
             {
                 switch (unsaved)
                 {
                     case "discard":
                         break;
                     case "save":
-                        if (string.IsNullOrEmpty(active.path))
-                            throw new PrismCommandException(ErrorCodes.BadArgs, "The active scene was never saved; use unsaved='discard' or save it first.");
-                        EditorSceneManager.SaveScene(active);
+                        foreach (var s in dirty)
+                        {
+                            if (string.IsNullOrEmpty(s.path))
+                                throw new PrismCommandException(ErrorCodes.BadArgs, $"'{s.name}' was never saved; save it first or use unsaved='discard'.");
+                            EditorSceneManager.SaveScene(s);
+                        }
                         break;
                     default:
                         throw new PrismCommandException(ErrorCodes.NeedsConfirmation,
-                            $"'{active.name}' has unsaved changes. Save them, discard them, or cancel.",
-                            new JObject { ["reason"] = "unsaved_changes", ["scene"] = active.path });
+                            $"{string.Join(", ", dirty.Select(s => "'" + s.name + "'"))} has unsaved changes. Save them, discard them, or cancel.",
+                            new JObject { ["reason"] = "unsaved_changes", ["scenes"] = new JArray(dirty.Select(s => s.path)) });
                 }
+            }
+
+            // The working file is about to be overwritten. Unless the user said "discard", refuse when it
+            // holds work that is not in Prism yet (saved with Ctrl+S, or just saved above).
+            var workingFull = Path.Combine(PrismSettings.ProjectRoot, working);
+            if (unsaved != "discard" && File.Exists(workingFull) && !SameContent(workingFull, prismPath))
+            {
+                var last = (SceneBinding.ForScenePath(working) ?? binding)?.LastPrismPath;
+                if (last == null || !File.Exists(last) || !SameContent(workingFull, last))
+                    throw new PrismCommandException(ErrorCodes.NeedsConfirmation,
+                        $"{working} has changes that are not saved as a Prism version. Save a version first, or discard them.",
+                        new JObject { ["reason"] = "unversioned_changes", ["workingPath"] = working });
             }
 
             var current = PlayerSettings.productGUID.ToString();
@@ -119,6 +141,14 @@ namespace Prism.Unity.Editor
             binding.LastPrismPath = prismPath.Replace('\\', '/');
             binding.Save();
             return working;
+        }
+
+        static bool SameContent(string a, string b)
+        {
+            var fa = new FileInfo(a);
+            var fb = new FileInfo(b);
+            if (fa.Length != fb.Length) return false;
+            return File.ReadAllBytes(a).AsSpan().SequenceEqual(File.ReadAllBytes(b));
         }
 
         /// <summary>Prism's version info next to a scene file: &lt;name&gt;versioninfo.json (empty if missing).</summary>

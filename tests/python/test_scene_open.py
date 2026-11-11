@@ -57,6 +57,27 @@ class SceneOpenTests(unittest.TestCase):
         self.assertEqual(opens[1]["unsaved"], "discard")
         self.assertEqual(opens[1]["path"], "P:/v0001.unity")
 
+    def test_open_interactive_save_version_then_retry(self):
+        # "Save" means: keep the work as a Prism version first, then open the old version.
+        unversioned = BridgeError("needs_confirmation", "Unversioned work.", {"reason": "unversioned_changes"})
+        core = AskCore("Save version")
+        unity = OpenUnity(unversioned, {"workingPath": "Assets/x.unity"})
+        funcs = plugin(core, unity)
+        saved = []
+        funcs._save_version_before_open = lambda path: saved.append(path) or True
+        self.assertTrue(funcs.openScene(None, "P:/v0001.unity"))
+        self.assertEqual(saved, ["P:/v0001.unity"])
+        opens = [a for c, a in unity.calls if c == "openSceneFrom"]
+        self.assertEqual([a["unsaved"] for a in opens], ["abort", "abort"])
+
+    def test_open_interactive_discard_unversioned(self):
+        unversioned = BridgeError("needs_confirmation", "Unversioned work.", {"reason": "unversioned_changes"})
+        core = AskCore("Discard")
+        unity = OpenUnity(unversioned, {"workingPath": "Assets/x.unity"})
+        self.assertTrue(plugin(core, unity).openScene(None, "P:/v0001.unity"))
+        opens = [a for c, a in unity.calls if c == "openSceneFrom"]
+        self.assertEqual(opens[1]["unsaved"], "discard")
+
     def test_open_interactive_cancel(self):
         core = AskCore("Cancel")
         unity = OpenUnity(UNSAVED)

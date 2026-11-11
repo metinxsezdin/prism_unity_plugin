@@ -143,7 +143,7 @@ class Prism_Unity_Functions(object):
         """
         unity = self._unity()
         args = {"path": filepath.replace("\\", "/"), "unsaved": "abort", "confirmForeign": False}
-        for _ in range(3):
+        for _ in range(4):
             try:
                 unity.call("openSceneFrom", args, interactive=True, timeout=300)
                 return True
@@ -151,11 +151,19 @@ class Prism_Unity_Functions(object):
                 if e.code != "needs_confirmation" or "silent" in self.core.prismArgs:
                     raise
                 reason = e.details.get("reason")
-                if reason == "unsaved_changes":
-                    answer = self.core.popupQuestion(e.message, title="Open in Unity", buttons=["Save", "Discard", "Cancel"])
-                    if answer not in ("Save", "Discard"):
+                if reason in ("unsaved_changes", "unversioned_changes"):
+                    # "Save version" keeps the current work as a Prism version before the old one
+                    # replaces the working scene; a plain save would be overwritten right away.
+                    answer = self.core.popupQuestion(e.message, title="Open in Unity",
+                                                     buttons=["Save version", "Discard", "Cancel"])
+                    if answer == "Save version":
+                        if not self._save_version_before_open(filepath):
+                            return False
+                        args["unsaved"] = "abort"
+                    elif answer == "Discard":
+                        args["unsaved"] = "discard"
+                    else:
                         return False
-                    args["unsaved"] = answer.lower()
                 elif reason == "foreign_project":
                     answer = self.core.popupQuestion(e.message, title="Open in Unity", buttons=["Open anyway", "Cancel"])
                     if answer != "Open anyway":
@@ -164,6 +172,12 @@ class Prism_Unity_Functions(object):
                 else:
                     raise
         return False
+
+    def _save_version_before_open(self, opening_path):
+        from unity_bridge.commands import PrismCommands
+
+        comment = "Saved before opening %s" % os.path.basename(opening_path)
+        return PrismCommands(self.core, self._unity())._save_interactively(comment=comment)
 
     @err_catcher(name=__name__)
     def sm_export_addObjects(self, origin, objects=None):
