@@ -65,6 +65,24 @@ class ShotToolsTests(unittest.TestCase):
         self.assertIn("1 scene", e["details"]["summary"])
         self.assertTrue(os.path.isdir(self.shot_dir))
 
+    def test_rename_preview_counts_renamed_names(self):
+        # I5: Prism renames every file and folder whose name contains the old name.
+        os.makedirs(os.path.join(self.shot_dir, "Scenefiles", "anm"))
+        with open(os.path.join(self.shot_dir, "Scenefiles", "anm", "sq01-sh010_anm_v0001.ma"), "w") as f:
+            f.write("x")
+        changes = self._token("rename", entity=SH010, newName="sh011")["details"]["changes"]
+        self.assertEqual(changes["renamedNames"], 2)  # the shot folder and the scene file
+        self.assertIn("sq01-sh010_anm_v0001.ma → sq01-sh011_anm_v0001.ma", changes["sample"])
+
+    def test_rename_refuses_partial_name_matches(self):
+        # I5: renaming shot "010" would also turn version folder v0010 into v0020.
+        self.core.entities.add_shot("sq01", "010")
+        shot = {"type": "shot", "sequence": "sq01", "shot": "010"}
+        os.makedirs(os.path.join(self.core.getEntityPath(entity=shot), "Export", "cam", "v0010"))
+        e = self._err("rename", entity=shot, newName="020")
+        self.assertEqual(e["code"], "bad_args")
+        self.assertIn("v0010", e["message"])
+
     def test_rename_shot(self):
         e = self._token("rename", entity=SH010, newName="sh011")
         r = self._ok("rename", entity=SH010, newName="sh011", confirm=e["details"]["confirmToken"])

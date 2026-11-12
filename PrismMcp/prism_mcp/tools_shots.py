@@ -2,6 +2,7 @@
 
 import datetime
 import os
+import re
 
 from unity_bridge.protocol import BridgeError
 
@@ -54,6 +55,33 @@ def _check_unlocked(folders):
         os.rename(probe, path)
 
 
+def _renamed_names(folders, old, new):
+    """What Prism's rename will do: it renames every file and folder below the entity whose name contains `old`.
+
+    Returns [(old name, new name)]; bad_args when `old` appears inside a longer word in some name (shot 010 in
+    version folder v0010), because Prism would rename that too.
+    """
+    token = re.compile(r"(?<![A-Za-z0-9])%s(?![A-Za-z0-9])" % re.escape(old))
+    renames, partial = [], []
+    for _, top in folders:
+        names = [os.path.basename(top)]
+        for root, dirs, files in os.walk(top):
+            names.extend(dirs)
+            names.extend(files)
+        for name in names:
+            if old not in name:
+                continue
+            if name.count(old) != len(token.findall(name)):
+                partial.append(name)
+            else:
+                renames.append((name, name.replace(old, new)))
+    if partial:
+        raise BridgeError("bad_args", "Prism would also rename names that only contain %r inside a longer word, e.g. %s. "
+                          "Pick a name that is not part of other names, or rename by hand in Prism." % (old, ", ".join(sorted(set(partial))[:5])),
+                          {"partialMatches": sorted(set(partial))[:20]})
+    return renames
+
+
 def _target(entity, new_name):
     if entity["type"] == "shot":
         return dict(entity, shot=new_name)
@@ -80,11 +108,14 @@ def rename(ctx, entity, newName, confirm=None):
         raise BridgeError("bad_args", "%s exists already." % entities.label(new))
     core = ctx.core
     folders = _folders(core, entity)
+    old_token = entity["shot"] if entity["type"] == "shot" else entity["sequence"]
+    renames = _renamed_names(folders, old_token, newName)
     dependents = find_dependents(ctx, folders[0][1])
     confirmation.require(
         ctx, "rename", {"entity": entity, "newName": newName, "confirm": confirm},
         "%s is renamed to %s. %s" % (entities.label(entity), entities.label(new), _dependents_summary(dependents)),
         {"from": entities.label(entity), "to": entities.label(new), "folders": [_slash(p) for _, p in folders],
+         "renamedNames": len(renames), "sample": ["%s → %s" % pair for pair in renames[:10]],
          "dependents": dependents, "note": UNITY_NOTE},
         _state(folders))
     _check_unlocked(folders)

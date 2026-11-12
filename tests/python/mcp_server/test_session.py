@@ -54,6 +54,80 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(cm.exception.code, "needs_input")
         self.assertEqual(cm.exception.details["missing"], ["prismProject"])
 
+    def test_each_tool_call_clears_prism_config_cache(self):
+        # C1: Prism caches config files for the life of the process; a teammate's change must be seen.
+        from prism_mcp import registry
+
+        core = FakeCore()
+        cleared = []
+        core.configs = type("Configs", (), {"clearCache": lambda self, path=None: cleared.append(path)})()
+        session = make_session(core)
+        session.core
+        tools = {"look": registry.ToolSpec("look", "", {"type": "object"}, lambda ctx: "ok", False)}
+        registry.call_tool(session, "look", {}, tools=tools)
+        registry.call_tool(session, "look", {}, tools=tools)
+        self.assertEqual(cleared, [None, None])
+
+    def test_run_turns_message_box_exec_into_needs_input(self):
+        # C2: Prism's renameSequence shows a QMessageBox with exec_() directly; offscreen it would block forever.
+        import prism_env  # noqa: F401
+        from qtpy import QtWidgets
+
+        original = QtWidgets.QMessageBox.exec_
+        session = make_session(FakeCore())
+        with self.assertRaises(BridgeError) as cm:
+            session.run(lambda c: QtWidgets.QMessageBox.exec_(object()))
+        self.assertEqual(cm.exception.code, "needs_input")
+        with self.assertRaises(BridgeError):
+            session.run(lambda c: QtWidgets.QDialog.exec_(object()))
+        self.assertIs(QtWidgets.QMessageBox.exec_, original)
+
+    def test_offline_current_project_is_source_unavailable(self):
+        # I1: Prism leaves no project active when the user's project drive is offline at start.
+        core = FakeCore()
+        core.config["globals"]["current project"] = "Q:/Wellness/00_Pipeline/pipeline.json"
+        with self.assertRaises(BridgeError) as cm:
+            make_session(core).require_project()
+        self.assertEqual(cm.exception.code, "source_unavailable")
+        self.assertIn("Q:/Wellness", cm.exception.message)
+
+    def test_missing_user_name_stops_before_prism_starts(self):
+        # I2: PrismCore.create would write the Windows login into Prism.json as the user's name.
+        import tempfile
+        from prism_mcp import session as session_module
+
+        prefs = tempfile.mkdtemp()
+        with open(os.path.join(prefs, "Prism.json"), "w", encoding="utf-8") as f:
+            json.dump({"globals": {"current project": ""}}, f)
+        old = os.environ.get("PRISM_USER_PREFS")
+        os.environ["PRISM_USER_PREFS"] = prefs
+        try:
+            with self.assertRaises(BridgeError) as cm:
+                session_module.create_core()
+        finally:
+            if old is None:
+                os.environ.pop("PRISM_USER_PREFS")
+            else:
+                os.environ["PRISM_USER_PREFS"] = old
+        self.assertEqual(cm.exception.code, "needs_input")
+        self.assertEqual(cm.exception.details["missing"], ["prismUser"])
+        with open(os.path.join(prefs, "Prism.json"), encoding="utf-8") as f:
+            self.assertNotIn("username", json.load(f)["globals"])
+
+    def test_audit_log_follows_prism_user_prefs(self):
+        # I7: Prism finds Documents through the Shell API or PRISM_USER_PREFS, not USERPROFILE\Documents.
+        from prism_mcp import audit
+
+        old = os.environ.get("PRISM_USER_PREFS")
+        os.environ["PRISM_USER_PREFS"] = os.path.join("X:", "prefs", "Prism2")
+        try:
+            self.assertEqual(audit.default_path(), os.path.join("X:", "prefs", "Prism2", "PrismMcp.log"))
+        finally:
+            if old is None:
+                os.environ.pop("PRISM_USER_PREFS")
+            else:
+                os.environ["PRISM_USER_PREFS"] = old
+
     def _mutating_tools(self, handler):
         from prism_mcp import registry
 

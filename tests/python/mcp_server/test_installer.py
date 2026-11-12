@@ -16,8 +16,11 @@ SYSTEM_PATH = r"C:\Windows\System32;C:\Windows;C:\Windows\System32\WindowsPowerS
 class InstallerTests(unittest.TestCase):
     def setUp(self):
         self.home = tempfile.mkdtemp(prefix="prism_install_home_")
-        os.makedirs(os.path.join(self.home, "Documents", "Prism2"))
-        self.cfg = os.path.join(self.home, "Documents", "Prism2", "PluginPaths.json")
+        # Prism's settings folder is found like Prism does (PRISM_USER_PREFS, else the Shell Documents folder),
+        # never through USERPROFILE\Documents, which is wrong when Documents is redirected (OneDrive).
+        self.prefs = os.path.join(self.home, "Redirected Documents", "Prism2")
+        os.makedirs(self.prefs)
+        self.cfg = os.path.join(self.prefs, "PluginPaths.json")
         with open(self.cfg, "w", encoding="utf-8") as f:
             json.dump({"plugins": [{"path": "C:\\ProgramData\\Prism2\\plugins\\Maya"}]}, f)
         self.bin = tempfile.mkdtemp(prefix="prism_install_bin_")
@@ -30,7 +33,7 @@ class InstallerTests(unittest.TestCase):
         shutil.rmtree(self.bin, ignore_errors=True)
 
     def _run(self, *args, claude=True, bat=None, prism_root=None):
-        env = dict(os.environ, USERPROFILE=self.home, PATH=(self.bin + ";" if claude else "") + SYSTEM_PATH)
+        env = dict(os.environ, USERPROFILE=self.home, PRISM_USER_PREFS=self.prefs, PATH=(self.bin + ";" if claude else "") + SYSTEM_PATH)
         env.pop("PRISM_ROOT", None)
         flags = ["-NoPause", "-SkipCheck", "-PrismRoot", prism_root or prism_env.PRISM_ROOT] + list(args)
         if bat:
@@ -93,6 +96,16 @@ class InstallerTests(unittest.TestCase):
         code, out = self._run(prism_root=os.path.join(self.home, "NoPrism"))
         self.assertEqual(code, 1, out)
         self.assertIn("Prism was not found", out)
+
+    def test_npm_ps1_shim_is_not_used(self):
+        # I6: PowerShell 5.1 drops "--" when it calls a .ps1, and -e then swallows the server command.
+        with open(os.path.join(self.bin, "claude.ps1"), "w") as f:
+            f.write('Add-Content -Path (Join-Path $PSScriptRoot "claude.log") -Value ("PS1 " + ($args -join " "))' + chr(10))
+        code, out = self._run()
+        self.assertEqual(code, 0, out)
+        calls = self._claude_calls()
+        self.assertFalse(any(c.startswith("PS1") for c in calls), calls)
+        self.assertTrue(calls[-1].startswith("mcp add prism --scope user -e PRISM_ROOT="), calls)
 
     def test_bat_passes_arguments(self):
         code, out = self._run(bat="Install.bat")

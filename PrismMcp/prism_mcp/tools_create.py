@@ -87,6 +87,8 @@ def create_entity(ctx, entity, description=None, frameRange=None, taskPreset=Non
     frame_range = _frame_range(frameRange)
     preset = _preset(core, entity["type"], taskPreset) if taskPreset else None
 
+    if entities.is_category(ctx, entity):
+        raise BridgeError("bad_args", "%s is a category folder that holds assets, not an asset." % entity["asset_path"])
     if entities.exists(ctx, entity):
         return {"created": False, "entity": entity, "omitted": bool(ctx.run(lambda c: c.entities.isEntityOmitted(entity)))}
 
@@ -115,7 +117,8 @@ def create_department(ctx, entity, department, defaultTasks=True):
 
     def create(c):
         before = _tasks(c, entity)
-        if not c.entities.createDepartment(abbr, entity, createCat=bool(defaultTasks)):
+        c.entities.createDepartment(abbr, entity, createCat=bool(defaultTasks))  # returns None when there are no default tasks
+        if not os.path.isdir(c.getEntityPath(entity=entity, step=abbr)):
             raise BridgeError("internal", "Prism could not create the department %s." % abbr)
         return sorted(task for dep, task in _tasks(c, entity) - before if dep == abbr)
 

@@ -247,6 +247,14 @@ class FakeEntities(object):
                                                            {"name": "Surfacing", "tasks": ["Surfacing"]}]}],
                "shot": []}
 
+    def getTypeFromAssetPath(self, path, content=None):
+        if not os.path.exists(path):
+            return None
+        for a in self.assets:
+            if os.path.normcase(self.core.getEntityPath(entity={"type": "asset", "asset_path": a})) == os.path.normcase(os.path.normpath(path)):
+                return "asset"
+        return "folder"
+
     def isValidAssetName(self, assetName):
         return assetName not in ("Export", "Scenefiles", "Playblasts")
 

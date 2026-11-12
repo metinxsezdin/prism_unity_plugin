@@ -37,6 +37,14 @@ class SessionToolsTests(unittest.TestCase):
         self.assertEqual(r["error"]["code"], "needs_input")
         self.assertEqual(r["error"]["details"]["missing"], ["prismUser"])
 
+    def test_status_names_an_offline_current_project(self):
+        # I1
+        core = FakeCore()
+        core.config["globals"]["current project"] = "Q:/Wellness/00_Pipeline/pipeline.json"
+        status = call(make_session(core), "status")["result"]
+        self.assertIsNone(status["project"])
+        self.assertIn("Q:/Wellness", status["projectProblem"])
+
     def test_list_projects_marks_unreachable(self):
         self.core.projects.recent.append({"configPath": "Q:/gone/00_Pipeline/pipeline.json", "name": "Gone"})
         items = {p["name"]: p for p in call(self.session, "list_projects")["result"]["items"]}

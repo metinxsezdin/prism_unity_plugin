@@ -22,6 +22,16 @@ def _text(value):
     return value.strip() if isinstance(value, str) else ""
 
 
+def _name(entity, key, what):
+    """A single folder name: no separators, never . or .. (they would walk out of the entity folders)."""
+    value = _text(entity.get(key))
+    if not value:
+        raise BridgeError("bad_args", "A %s entity needs %s." % (what, key))
+    if value in (".", "..") or "/" in value or "\\" in value:
+        raise BridgeError("bad_args", "%s %r is not a valid name." % (key, value))
+    return value
+
+
 def validate(entity, allowed=("asset", "shot")):
     """A clean copy of entity; bad_args if its shape is wrong or its type is not allowed."""
     if not isinstance(entity, dict):
@@ -35,23 +45,18 @@ def validate(entity, allowed=("asset", "shot")):
         path = raw.replace("\\", "/").strip("/")
         if not path.strip():
             raise BridgeError("bad_args", "An asset entity needs asset_path, e.g. Props/Lotus.")
-        if any(not part.strip() or part != part.strip() for part in path.split("/")):
-            raise BridgeError("bad_args", "asset_path %r has an empty folder name or a name with leading/trailing spaces." % raw)
+        if any(not part.strip() or part != part.strip() or part in (".", "..") for part in path.split("/")):
+            raise BridgeError("bad_args", "asset_path %r has an empty, '.' or '..' folder name, or a name with leading/trailing spaces." % raw)
         clean["asset_path"] = path
     elif kind == "shot":
         for key in ("sequence", "shot"):
-            if not _text(entity.get(key)):
-                raise BridgeError("bad_args", "A shot entity needs sequence and shot.")
-            clean[key] = _text(entity.get(key))
+            clean[key] = _name(entity, key, "shot")
     elif kind == "sequence":
-        if not _text(entity.get("sequence")):
-            raise BridgeError("bad_args", "A sequence entity needs sequence.")
-        clean["sequence"] = _text(entity.get("sequence"))
+        clean["sequence"] = _name(entity, "sequence", "sequence")
     elif kind == "episode":
-        if not _text(entity.get("episode")):
-            raise BridgeError("bad_args", "An episode entity needs episode.")
+        _name(entity, "episode", "episode")
     if _text(entity.get("episode")):
-        clean["episode"] = _text(entity.get("episode"))
+        clean["episode"] = _name(entity, "episode", "episode")
     return clean
 
 
@@ -71,8 +76,19 @@ def path(ctx, entity):
 
 
 def exists(ctx, entity):
+    """The entity's folder exists; for assets it must also be an asset to Prism, not a category folder like Props."""
     entity_path = path(ctx, entity)
-    return bool(entity_path) and os.path.isdir(entity_path)
+    if not entity_path or not os.path.isdir(entity_path):
+        return False
+    if entity.get("type") == "asset":
+        return ctx.core.entities.getTypeFromAssetPath(entity_path) == "asset"
+    return True
+
+
+def is_category(ctx, entity):
+    """An asset_path that is an existing folder Prism does not see as an asset (a category such as Props)."""
+    entity_path = path(ctx, entity)
+    return entity.get("type") == "asset" and bool(entity_path) and os.path.isdir(entity_path) and not exists(ctx, entity)
 
 
 def require(ctx, entity, allowed=("asset", "shot")):

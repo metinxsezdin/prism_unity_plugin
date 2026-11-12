@@ -20,6 +20,8 @@ Entities use Prism's own shape: `{"type":"asset","asset_path":"Props/Lotus"}` or
 
 ## Results and errors
 
+Every call first drops Prism's cached config files, so a teammate's change made a moment ago is seen.
+
 Every tool answers JSON text:
 
 - **Success:** `{"ok": true, "project": {"name", "path"}, "result": ...}`
@@ -44,7 +46,8 @@ token. Show the new preview.
 
 ### status
 Prism version, team version, Prism user and abbreviation, active project, server version; `warning` when Prism is not 2.1.2.1.
-`needs_input` (`missing: ["prismUser"]`) when no Prism user name is set.
+`needs_input` (`missing: ["prismUser"]`) when no Prism user name is set (checked before Prism starts, so Prism never saves
+the Windows login as the name). `projectProblem` says when the user's project is set but its drive is not reachable.
 
 ### list_projects
 Recently opened projects: `{name, configPath, reachable, current}`.
@@ -99,7 +102,8 @@ Creating something that exists already changes nothing and answers `created: fal
 ### create_entity
 **Arguments:** `entity`; optional `description` (assets), `frameRange: [start, end]` (shots), `taskPreset` (see `list_task_presets`).
 Folders in `asset_path` are created as needed. Names may not be empty, start or end with spaces, or contain `< > : " / \ | ? *`;
-Prism's own folder names (`Export`, `Scenefiles`, ...) are refused. **Returns:** `{created, entity, omitted}`.
+Prism's own folder names (`Export`, `Scenefiles`, ...), `.`/`..` and category folders (such as `Props`, which hold assets)
+are refused. **Returns:** `{created, entity, omitted}`.
 
 ### create_department
 **Arguments:** `entity`, `department` (name such as `Modeling` or abbreviation such as `mod`), optional `defaultTasks` (true).
@@ -151,6 +155,9 @@ Show an omitted asset or shot again. **Arguments:** `entity`, `confirm`.
 
 ### rename
 Rename a shot or a sequence. **Arguments:** `entity`, `newName`, `confirm`. Assets and episodes cannot be renamed.
+- Prism renames every file and folder below the entity whose name contains the old name. The preview counts them
+  (`renamedNames`, with a `sample`), and the call is refused (`bad_args`, `partialMatches`) when the old name appears inside a
+  longer word somewhere (shot `010` in version folder `v0010`).
 - The preview lists `folders`, `dependents` (scene files elsewhere in the project that use the entity's products; their links
   break) and a `note`: Unity imports are not in the list, and Unity's *Check for updates* will show them as removed from Prism.
 - Before renaming, every folder is checked; if a file inside is open, nothing is renamed (`internal`, `details.locked`).

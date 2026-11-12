@@ -4,7 +4,12 @@ import datetime
 import json
 import os
 
-DEFAULT_PATH = os.path.join(os.path.expanduser("~"), "Documents", "Prism2", "PrismMcp.log")
+from . import prefs
+
+
+def default_path():
+    """Next to the user's Prism settings (Documents\Prism2), wherever Windows keeps Documents."""
+    return os.path.join(prefs.user_prefs_dir(), "PrismMcp.log")
 
 
 def write(path, user, project, tool, args, envelope):

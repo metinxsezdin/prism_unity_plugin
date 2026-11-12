@@ -34,7 +34,10 @@ $server = Join-Path $repo "PrismMcp\server.py"
 Write-Host "Prism: $PrismRoot"
 
 # --- 1. Unity plugin -> Prism -----------------------------------------------------------------
-$cfg = Join-Path $env:USERPROFILE "Documents\Prism2\PluginPaths.json"
+# Prism finds its settings folder through PRISM_USER_PREFS or the Shell Documents folder (right also when Documents
+# is redirected, e.g. to OneDrive), never through USERPROFILE\Documents.
+$prefs = if ($env:PRISM_USER_PREFS) { $env:PRISM_USER_PREFS } else { Join-Path ([Environment]::GetFolderPath("MyDocuments")) "Prism2" }
+$cfg = Join-Path $prefs "PluginPaths.json"
 if (Test-Path $cfg) {
     if (-not (Test-Path "$cfg.bak")) { Copy-Item $cfg "$cfg.bak" }  # keep the first, pre-install copy
     $action = if ($Remove) { "remove" } else { "add" }
@@ -46,12 +49,15 @@ if (Test-Path $cfg) {
 }
 
 # --- 2. Prism MCP -> Claude Code -------------------------------------------------------------
-if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
+# An executable (.exe/.cmd), never the npm claude.ps1 shim: PowerShell 5.1 drops "--" when it calls a .ps1.
+$claude = Get-Command claude -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+if (-not $claude) {
     Write-Host "Claude Code not found; install it and run Install.bat again."
 } else {
-    & claude mcp remove prism --scope user 2>&1 | Out-Null  # no entry yet is fine
+    $claude = $claude.Source
+    & $claude mcp remove prism --scope user 2>&1 | Out-Null  # no entry yet is fine
     if (-not $Remove) {
-        & claude mcp add prism --scope user -e "PRISM_ROOT=$PrismRoot" -- $python $server
+        & $claude mcp add prism --scope user -e "PRISM_ROOT=$PrismRoot" -- $python $server
         if ($LASTEXITCODE -ne 0) { Finish 1 "Could not add the Prism MCP to Claude Code." }
         Write-Host "Prism MCP added to Claude Code. Restart Claude Code sessions to see the Prism tools."
     } else {

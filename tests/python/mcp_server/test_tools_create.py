@@ -51,6 +51,30 @@ class CreateToolsTests(unittest.TestCase):
         self.assertEqual(self.core.popups, [])
         self.assertEqual(self.core.entities.assets, ["Props/Lotus"])
 
+    def test_category_folder_is_not_an_asset(self):
+        # I3: "Props" holds assets; treating it as one would hide every asset under it from Prism.
+        props = {"type": "asset", "asset_path": "Props"}
+        self.assertEqual(self._err("create_entity", entity=props)["code"], "bad_args")
+        self.assertEqual(self._err("create_department", entity=props, department="Modeling")["code"], "bad_args")
+        self.assertFalse(os.path.exists(os.path.join(self.core.getEntityPath(entity=props), "Scenefiles")))
+
+    def test_create_department_without_default_tasks_succeeds(self):
+        # I4: Prism's createDepartment returns None when the department has no default tasks.
+        original = self.core.entities.createDepartment
+        self.core.entities.createDepartment = lambda *a, **k: (original(*a, **k), None)[1]
+        r = self._ok("create_department", entity=LOTUS, department="Modeling")
+        self.assertTrue(r["created"])
+
+    def test_dot_segments_are_bad_args(self):
+        # M5 (promoted): ".." must never walk out of the entity folders.
+        self.assertEqual(self._err("create_entity", entity={"type": "asset", "asset_path": "Props/../Lotus"})["code"], "bad_args")
+        self.assertEqual(self._err("create_entity", entity={"type": "shot", "sequence": "..", "shot": "03_Production"})["code"], "bad_args")
+        self.assertEqual(self._err("create_entity", entity={"type": "shot", "sequence": "sq01", "shot": "a/b"})["code"], "bad_args")
+        # Shots/../.. is the project folder itself: it exists, so only validation can stop it.
+        e = self._err("create_department", entity={"type": "shot", "sequence": "..", "shot": ".."}, department="Animation")
+        self.assertEqual(e["code"], "bad_args")
+        self.assertFalse(os.path.exists(os.path.join(self.core.projectPath, "Scenefiles")))
+
     def test_create_with_task_preset(self):
         self._ok("create_entity", entity=NEW, taskPreset="Prop")
         self.assertEqual(self.core.entities.steps["Props/Tea Cup"], {"mod": ["Sculpt", "Retopo"], "surf": ["Surfacing"]})

@@ -51,7 +51,10 @@ def call_tool(ctx, name, args, tools=None):
     except TypeError as e:
         return {"ok": False, "project": _project(ctx), "error": _error("bad_args", "%s: %s" % (name, e))}, True
 
+    begin = getattr(ctx, "begin_call", None)
     try:
+        if begin is not None:
+            begin()
         result = spec.handler(ctx, **args)
         envelope, is_error = {"ok": True, "project": _project(ctx), "result": result}, False
     except BridgeError as e:

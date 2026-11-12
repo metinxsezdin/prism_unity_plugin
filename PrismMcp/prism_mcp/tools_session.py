@@ -8,7 +8,7 @@ from unity_bridge.protocol import BridgeError
 from . import SERVER_VERSION
 from . import confirm as confirmation
 from .registry import CONFIRM_SENTENCE, tool
-from .session import TEAM_PRISM_VERSION
+from .session import NO_USER, TEAM_PRISM_VERSION
 
 
 def _norm(path):
@@ -18,7 +18,7 @@ def _norm(path):
 def _user(core):
     user = core.users.getUser()
     if not user:
-        raise BridgeError("needs_input", "No Prism user name is set. Open Prism once and enter your name.", {"missing": ["prismUser"]})
+        raise BridgeError("needs_input", NO_USER, {"missing": ["prismUser"]})
     return user
 
 
@@ -41,6 +41,9 @@ def status(ctx):
         "serverVersion": SERVER_VERSION,
         "project": ctx.project_info(),
     }
+    problem = ctx.project_problem()
+    if problem:
+        result["projectProblem"] = problem
     warning = version_warning(core.version)
     if warning:
         result["warning"] = warning
