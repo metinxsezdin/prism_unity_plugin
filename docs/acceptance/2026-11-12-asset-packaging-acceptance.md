@@ -51,7 +51,7 @@ Bunlar Prism ya da Unity penceresi gerektiriyor, otomatik testlerle denenemedi:
 - [ ] **Prism → Check for New Versions...** penceresinde Prism'den silinmiş bir ürün "Prism'de yok" notuyla görünüyor ve tanımı `prismMissing` oluyor.
 - [ ] **Prism → Generate Missing Asset Packages** ve **Prism → Convert Definitions to Selected Class** menüleri çalışıyor, sonuç penceresi doğru sayıyı gösteriyor.
 - [ ] **Canlı Claude oturumu:** `prism_import` cevabında `package` alanı var, `prism_convert_definitions` önce `needs_confirmation` dönüyor. Bu oturumda Unity MCP bağlantısı kapalıydı. Aynı çağrılar `PrismMcpToolsTests` ile doğrulandı.
-- [ ] **Addressables build:** Window → Asset Management → Addressables → Groups → Build. `PrismAssetCatalog` ve `Props/Lotus/lotus_model` Play Mode'da yükleniyor.
+- [ ] **Addressables build:** Window → Asset Management → Addressables → Groups → Build. `PrismAssetCatalog` ve `Props/Lotus/lotus_model` Play Mode'da yükleniyor. İçerik derlemesinin hatasız geçtiği ve `Prism Props` ile `Prism` gruplarının bundle ürettiği artık `AddressablesBuildTests` ile otomatik doğrulanıyor; elle kalan kısım Play Mode'da yükleme.
 
 ## Açık konular
 
