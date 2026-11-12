@@ -286,6 +286,8 @@ class PrismCommands(object):
 
     def _product_is_gone(self, entity, product):
         """True when the entity is reachable in Prism but has no such product (not an offline drive)."""
+        if not self._export_locations_reachable():
+            return False  # the product may live in a location that is offline
         try:
             entity_path = self.core.getEntityPath(entity=entity)
         except Exception:
@@ -299,6 +301,14 @@ class PrismCommands(object):
             return bool(root) and os.path.isdir(root)
         names = [p.get("product") for p in (self.core.products.getProductsFromEntity(entity) or [])]
         return product not in names
+
+    def _export_locations_reachable(self):
+        """True when every export location of the project (global, local, custom) can be read."""
+        try:
+            locations = self.core.paths.getExportProductBasePaths()
+        except Exception:
+            return True  # no location list: only the global one, checked by the caller
+        return all(os.path.isdir(p) for p in (locations or {}).values() if p)
 
     def _describe_version(self, version):
         products = self.core.products

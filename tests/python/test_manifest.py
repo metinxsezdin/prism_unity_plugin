@@ -119,6 +119,33 @@ class ManifestTests(unittest.TestCase):
         manifest.install_embedded(self.project, plugin)
         self.assertFalse(os.path.exists(stale))
 
+    def test_install_embedded_failed_copy_keeps_old_copy(self):
+        # M12: a locked or unreadable file mid-install must not leave a half-installed package.
+        from unittest import mock
+        make_unity_project(self.project)
+        plugin = self.make_plugin()
+        manifest.install_embedded(self.project, plugin)
+        old = os.path.join(self.project, "Packages", "com.prism.unity", "Editor", "Code.cs")
+        real_copytree = shutil.copytree
+
+        depth = []
+
+        def failing_copytree(src, dst, *args, **kwargs):
+            depth.append(1)  # copytree recurses through the patched name
+            try:
+                real_copytree(src, dst, *args, **kwargs)
+            finally:
+                depth.pop()
+            if not depth:
+                raise OSError("file in use")
+        with mock.patch.object(manifest.shutil, "copytree", side_effect=failing_copytree):
+            with self.assertRaises(OSError):
+                manifest.install_embedded(self.project, plugin)
+        self.assertTrue(os.path.isfile(old))
+        self.assertEqual(sorted(os.listdir(os.path.join(self.project, "Packages"))),
+                         ["com.prism.assets", "com.prism.unity", "manifest.json"])
+        self.assertEqual([n for n in os.listdir(self.project) if n.startswith(".prism")], [])
+
     def test_install_embedded_turkish_path(self):
         project = os.path.join(self.tmp, "Wellness Proje Ğüşİ")
         make_unity_project(project)

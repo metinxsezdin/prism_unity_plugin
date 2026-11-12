@@ -202,19 +202,24 @@ def open_import_browser(cmds):
     browser.activateWindow()
 
 
+def check_window_title(outdated, missing):
+    return "Prism: new versions for Unity" if outdated else "Prism: products removed from Prism"
+
+
 def open_check_versions(cmds, outdated, missing=()):
     from qtpy.QtCore import Qt
     from qtpy.QtWidgets import QDialog, QDialogButtonBox, QLabel, QListWidget, QListWidgetItem, QVBoxLayout
 
     dlg = QDialog()
-    dlg.setWindowTitle("Prism: new versions for Unity")
+    dlg.setWindowTitle(check_window_title(outdated, missing))
     layout = QVBoxLayout(dlg)
     if missing:
         names = ", ".join(e["id"] for e in missing)
         note = QLabel("No longer in Prism (kept in Unity, marked as missing): %s" % names)
         note.setWordWrap(True)
         layout.addWidget(note)
-    layout.addWidget(QLabel("These Prism products have newer versions than the ones in this Unity project:"))
+    if outdated:
+        layout.addWidget(QLabel("These Prism products have newer versions than the ones in this Unity project:"))
     items = QListWidget()
     for entry in outdated:
         item = QListWidgetItem("%s    %s → %s" % (entry["id"], entry["current"], entry["latest"]))
@@ -222,9 +227,11 @@ def open_check_versions(cmds, outdated, missing=()):
         item.setCheckState(Qt.Checked)
         item.setData(Qt.UserRole, entry)
         items.addItem(item)
+    items.setVisible(bool(outdated))
     layout.addWidget(items)
     buttons = QDialogButtonBox()
     update = buttons.addButton("Update selected", QDialogButtonBox.AcceptRole)
+    update.setVisible(bool(outdated))
     buttons.addButton("Close", QDialogButtonBox.RejectRole)
     layout.addWidget(buttons)
 

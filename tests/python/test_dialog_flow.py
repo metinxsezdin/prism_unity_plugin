@@ -103,3 +103,12 @@ class DialogFlowTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CheckWindowTitleTests(unittest.TestCase):
+    # M8: a window that only lists removed products must not be titled "new versions".
+    def test_only_missing(self):
+        self.assertEqual(dialogs.check_window_title([], [{"id": "a"}]), "Prism: products removed from Prism")
+
+    def test_outdated(self):
+        self.assertEqual(dialogs.check_window_title([{"id": "a"}], [{"id": "b"}]), "Prism: new versions for Unity")

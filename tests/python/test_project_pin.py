@@ -25,10 +25,10 @@ class FakeConfigCore:
 
 class PinProjectTests(unittest.TestCase):
     def test_pins_project_without_touching_users_setting(self):
-        core = FakeConfigCore(r"M:\ulker_ambalaj\00_Pipeline\pipeline.json")
+        core = FakeConfigCore(r"M:\other_project\00_Pipeline\pipeline.json")
         pin_project(core, "C:/Users/x/PrismUnityTest Project/00_Pipeline/pipeline.json")
         self.assertEqual(core.prismIni, "C:/Users/x/PrismUnityTest Project/00_Pipeline/pipeline.json")
-        self.assertEqual(core.config["current project"], r"M:\ulker_ambalaj\00_Pipeline\pipeline.json")
+        self.assertEqual(core.config["current project"], r"M:\other_project\00_Pipeline\pipeline.json")
 
     def test_already_active_project_is_not_reloaded(self):
         core = FakeConfigCore("C:/P/00_Pipeline/pipeline.json")

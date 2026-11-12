@@ -28,7 +28,7 @@
 4. `prism_import` v0002 → lotus yerleştirildi, `PetalMat` yeni URP/Lit pembe materyale eşlendi.
 5. `prism_playblast` (PNG ve MP4) → Turntable v0001/v0002. Pembe materyal karede görünüyor.
 6. `prism_save_version` → önce `needs_confirmation` (departman oluşturma). Onaydan sonra `MeditationRoom_layout_v0001.unity` kaydedildi. Lotus sahnede, yorum ve proje kimliği versiyon bilgisinde.
-7. Kullanıcının Prism "aktif proje" ayarı değişmedi (`M:\ulker_ambalaj`).
+7. Kullanıcının Prism "aktif proje" ayarı değişmedi (`M:\other_project`).
 
 ## Senin elle kontrol etmen gerekenler
 

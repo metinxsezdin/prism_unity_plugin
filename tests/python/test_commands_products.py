@@ -214,6 +214,31 @@ class ProductCommandTests(unittest.TestCase):
         self.assertEqual(self.call("checkVersions", records=records)["result"][0]["missing"], True)
 
 
+    def test_product_in_offline_export_location_is_not_missing(self):
+        # M11: a product exported only to another location (e.g. a NAS) that is offline is not gone.
+        class Paths:
+            def __init__(self, root):
+                self.root = root
+
+            def getExportProductBasePaths(self):
+                return {"global": self.root, "nas": os.path.join(self.root, "offline-nas")}
+        self.core.paths = Paths(self.tmp)
+        self.core.projectPath = self.tmp
+        records = [{"id": "x", "entity": LOTUS, "product": "nope", "version": "v0001"},
+                   {"id": "y", "entity": {"type": "asset", "asset_path": "Props/Deleted"}, "product": "m", "version": "v0001"}]
+        self.assertEqual(self.call("checkVersions", records=records)["result"], [])
+
+    def test_product_missing_when_all_export_locations_reachable(self):
+        class Paths:
+            def __init__(self, root):
+                self.root = root
+
+            def getExportProductBasePaths(self):
+                return {"global": self.root, "local": self.root}
+        self.core.paths = Paths(self.tmp)
+        records = [{"id": "x", "entity": LOTUS, "product": "nope", "version": "v0001"}]
+        self.assertEqual(self.call("checkVersions", records=records)["result"][0]["missing"], True)
+
     def test_deleted_entity_in_reachable_project_is_missing(self):
         # Deleting the whole asset in Prism is the usual way a product disappears.
         self.core.projectPath = self.tmp

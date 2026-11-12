@@ -1,8 +1,9 @@
 """Adding and removing the com.prism.unity package in a Unity project's Packages/manifest.json."""
 
 import json
-import shutil
 import os
+import shutil
+import tempfile
 from collections import OrderedDict
 
 PACKAGE_NAME = "com.prism.unity"
@@ -79,11 +80,7 @@ def install_embedded(project_path, plugin_dir):
         source = os.path.join(plugin_dir, "UnityPackage", name)
         if not os.path.isfile(os.path.join(source, "package.json")):
             continue
-        target = os.path.join(project_path, "Packages", name)
-        if os.path.isdir(target):
-            shutil.rmtree(target)
-        # Tests stay in the plugin: their teardowns delete Assets/Prism and the Addressables settings.
-        shutil.copytree(source, target, ignore=shutil.ignore_patterns("Tests", "Tests.meta"))
+        _replace_dir(source, os.path.join(project_path, "Packages", name), project_path)
         installed.append(name)
 
     data = _read(path)
@@ -92,6 +89,30 @@ def install_embedded(project_path, plugin_dir):
         data["dependencies"] = OrderedDict((k, v) for k, v in deps.items() if k not in EMBEDDED_PACKAGES)
         _write(path, data)
     return installed
+
+
+def _replace_dir(source, target, project_path):
+    """Copy source over target so that a failure at any point leaves the old copy in place.
+
+    The new copy is staged at the project root, where Unity does not look for packages: a second
+    com.prism.unity folder under Packages/ would clash with the first while the copy runs.
+    """
+    staging = tempfile.mkdtemp(prefix=".prism_install_", dir=project_path)
+    try:
+        staged = os.path.join(staging, "new")
+        # Tests stay in the plugin: their teardowns delete Assets/Prism and the Addressables settings.
+        shutil.copytree(source, staged, ignore=shutil.ignore_patterns("Tests", "Tests.meta"))
+        backup = os.path.join(staging, "old")
+        if os.path.isdir(target):
+            os.replace(target, backup)  # fails as a whole if a file in it is locked
+        try:
+            os.replace(staged, target)
+        except OSError:
+            if os.path.isdir(backup):
+                os.replace(backup, target)
+            raise
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
 
 
 def remove_embedded(project_path):
