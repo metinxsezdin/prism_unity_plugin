@@ -96,7 +96,7 @@ You can also add the same folder from the plugins section of Prism's settings.
    - `com.prism.assets`: the runtime types of asset packages. It pulls in Addressables 2.9.1, which ships with Unity 6000.5.
 4. Open the project in Unity. A **Prism** menu appears.
 
-The packages are copies, not links to this repository, so the project works on machines without the plugin, and they go into Git with the project. To upgrade, run step 2 again.
+The packages are copies, not links to this repository, so the project works on machines without the plugin, and they go into Git with the project. To upgrade, run step 2 again. Removing the integration in Prism removes `com.prism.unity` only; `com.prism.assets` stays because game code and the definitions use its types.
 
 If Prism is installed somewhere else, set the path once in Unity: `EditorPrefs.SetString("PrismUnity.PrismRoot", @"D:\Prism2")`.
 
@@ -158,7 +158,7 @@ Assets/Prism/PrismAssetCatalog.asset   every definition, sorted
 **Definitions.**
 - Prism writes `entityType`, `entityPath`, `product`, `version`, `contentVersion`, `addressableKey`, `prefab`, `thumbnail` and `prismMissing`.
 - `displayName` starts as the entity name, and the team can change it.
-- For game data such as price or unlock level, write a subclass of `Prism.Assets.PrismAssetDefinition` in a file of the same name, then pick it in **Project Settings → Prism**. New packages use it, and **Prism → Convert Definitions to Selected Class** switches the existing ones. Files and GUIDs stay the same, and fields with the same name keep their values.
+- For game data such as price or unlock level, write a subclass of `Prism.Assets.PrismAssetDefinition` in a file of the same name, then pick it in **Project Settings → Prism**. New packages use it, and **Prism → Convert Definitions to Selected Class** switches the existing ones. Files, GUIDs and every existing field stay the same.
 
 **Addressables.**
 - The prefab is addressable as `{entity}/{product}` (`Props/Lotus/lotus_model`), the definition as `…#definition` and the thumbnail as `…#thumb`.
@@ -175,7 +175,13 @@ foreach (var item in catalog.ByCategory("Props"))
     await item.prefab.InstantiateAsync().Task;
 ```
 
-**Removed in Prism.** When *Check for New Versions* finds that a product no longer exists in Prism, its definition gets `prismMissing = true`. Nothing is deleted. Re-importing the product clears the flag.
+**Removed in Prism.** When *Check for New Versions* finds that a product (or its whole asset) no longer exists in Prism, its definition gets `prismMissing = true`. Nothing is deleted. The flag clears by itself when the product is back. The startup check mentions a removed product once, not on every launch. If the Prism project's drive is offline, nothing is flagged.
+
+**Things the team owns are never replaced.**
+- A moved or renamed prefab variant is followed through the definition's `prefab` reference, and no second one is created.
+- A renamed Addressable address is kept and becomes the definition's `addressableKey`.
+- A definition file that no longer loads, typically after renaming its class, is left untouched with a warning.
+- Conversion only goes to a class that extends the current one, so no field is lost.
 
 **Project Settings → Prism** turns packaging on or off and sets the definition class and the address and group formats. With packaging off, imports behave as before: only the model is written.
 

@@ -131,6 +131,42 @@ class ManifestTests(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.project, "Packages", "com.prism.unity")))
         self.assertFalse(manifest.remove_embedded(self.project))
 
+    def test_install_embedded_leaves_out_tests(self):
+        # The package's tests delete Assets/Prism and the Addressables settings in their teardown:
+        # they must never reach a team project.
+        make_unity_project(self.project)
+        plugin = self.make_plugin()
+        tests = os.path.join(plugin, "UnityPackage", "com.prism.unity", "Tests")
+        os.makedirs(os.path.join(tests, "Editor"))
+        with open(os.path.join(tests, "Editor", "Danger.cs"), "w") as f:
+            f.write("// deletes Assets/Prism")
+        with open(tests + ".meta", "w") as f:
+            f.write("guid: 1")
+        manifest.install_embedded(self.project, plugin)
+        target = os.path.join(self.project, "Packages", "com.prism.unity")
+        self.assertFalse(os.path.exists(os.path.join(target, "Tests")))
+        self.assertFalse(os.path.exists(os.path.join(target, "Tests.meta")))
+        self.assertTrue(os.path.isfile(os.path.join(target, "Editor", "Code.cs")))
+
+    def test_remove_embedded_keeps_runtime_package(self):
+        # Game code references Prism.Assets; removing the integration must not break it.
+        make_unity_project(self.project)
+        manifest.install_embedded(self.project, self.make_plugin())
+        manifest.remove_embedded(self.project)
+        self.assertFalse(os.path.exists(os.path.join(self.project, "Packages", "com.prism.unity")))
+        self.assertTrue(os.path.isfile(os.path.join(self.project, "Packages", "com.prism.assets", "package.json")))
+
+    def test_write_project_binding_stores_project_name(self):
+        make_unity_project(self.project)
+        config = os.path.join(self.tmp, "Wellness", "00_Pipeline", "pipeline.json")
+        os.makedirs(os.path.dirname(config))
+        with open(config, "w", encoding="utf-8") as f:
+            json.dump({"globals": {"project_name": "Wellness"}}, f)
+        manifest.write_project_binding(self.project, config)
+        path = os.path.join(self.project, "ProjectSettings", "PrismUnity", "project.json")
+        with open(path, encoding="utf-8") as f:
+            self.assertEqual(json.load(f)["projectName"], "Wellness")
+
     def test_write_project_binding(self):
         make_unity_project(self.project)
         manifest.write_project_binding(self.project, r"M:\Wellness\00_Pipeline\pipeline.json")

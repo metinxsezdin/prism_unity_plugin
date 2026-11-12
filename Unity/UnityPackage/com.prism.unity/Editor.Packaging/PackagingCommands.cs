@@ -16,18 +16,28 @@ namespace Prism.Unity.Editor.Packaging
     {
         static PackagingCommands()
         {
-            // Prism's "Check for updates" window sends this for products that disappeared from Prism.
+            // Prism's "Check for updates" window sends this for products that disappeared from Prism (missing: true)
+            // and for those that exist (missing: false). "changed" lets its startup check stay quiet about old news.
             CommandRegistry.Register("setPrismMissing", (a, c) =>
             {
                 var ids = a["ids"]?.ToObject<string[]>() ?? new string[0];
-                return new JObject { ["updated"] = new JArray(SetMissing(ids, (bool?)a["missing"] ?? true).Cast<object>().ToArray()) };
+                var (updated, changed) = SetMissing(ids, (bool?)a["missing"] ?? true);
+                return new JObject
+                {
+                    ["updated"] = new JArray(updated.Cast<object>().ToArray()),
+                    ["changed"] = new JArray(changed.Cast<object>().ToArray()),
+                };
             }, true);
-            PrismApi.MissingReported += ids => SetMissing(ids, true);
+            PrismApi.AvailabilityReported += (missing, present) =>
+            {
+                SetMissing(missing, true);
+                SetMissing(present, false);
+            };
             PrismSettingsProvider.DefinitionClassChanged += t => OfferConversion(t);
 
             // Claude's tools live in Prism.Unity.Editor, which does not reference this assembly.
             PrismMcpTools.PackageInfoProvider = PackageJson;
-            PrismMcpTools.GeneratePackagesHandler = GenerateMissingAsync;
+            PrismMcpTools.GeneratePackagesHandler = async () => (await GenerateMissingAsync()).ToJson();
             PrismMcpTools.ConvertDefinitionsHandler = ConvertForClaude;
         }
 
@@ -75,10 +85,11 @@ namespace Prism.Unity.Editor.Packaging
 
         // ---- missing in Prism ----
 
-        /// <summary>Set prismMissing on the definitions of these records. Returns the ids that have a definition.</summary>
-        public static List<string> SetMissing(IEnumerable<string> recordIds, bool missing)
+        /// <summary>Set prismMissing on the definitions of these records: (ids that have a definition, ids whose flag changed).</summary>
+        public static (List<string> updated, List<string> changed) SetMissing(IEnumerable<string> recordIds, bool missing)
         {
             var updated = new List<string>();
+            var changed = new List<string>();
             foreach (var id in recordIds)
             {
                 var record = string.IsNullOrEmpty(id) ? null : ImportRecord.Load(id);
@@ -91,19 +102,40 @@ namespace Prism.Unity.Editor.Packaging
                     EditorUtility.SetDirty(definition);
                     AssetDatabase.SaveAssetIfDirty(definition);
                     if (missing) Debug.LogWarning($"[Prism] {record.Entity.Path}/{record.Product} no longer exists in Prism. Its package is kept and flagged prismMissing.");
+                    changed.Add(id);
                 }
                 updated.Add(id);
             }
-            return updated;
+            return (updated, changed);
         }
 
         // ---- generate missing packages ----
 
-        /// <summary>Package every imported product whose package is incomplete. Thumbnails are rendered. Returns how many were packaged.</summary>
-        public static int GenerateMissing() => GenerateMissing(_ => null);
+        /// <summary>What a Generate Missing run did.</summary>
+        public class GenerateReport
+        {
+            /// <summary>Products that got their package created.</summary>
+            public int Generated;
+            /// <summary>Complete packages whose Addressable entries and catalog entry were checked again.</summary>
+            public int Repaired;
+            public readonly List<(string id, string error)> Failed = new List<(string, string)>();
+
+            public JObject ToJson() => new JObject
+            {
+                ["generated"] = Generated,
+                ["repaired"] = Repaired,
+                ["failed"] = new JArray(Failed.Select(f => new JObject { ["id"] = f.id, ["error"] = f.error })),
+            };
+        }
+
+        /// <summary>
+        /// Package every imported product whose package is incomplete (thumbnails are rendered), and re-register the
+        /// Addressable and catalog entries of complete ones. A failing product is reported and skipped. Returns how many were packaged.
+        /// </summary>
+        public static int GenerateMissing() => Generate(_ => null).Generated;
 
         /// <summary>Like GenerateMissing, but asks Prism for each product's preview image first; falls back to rendering when Prism is unreachable.</summary>
-        public static async Task<int> GenerateMissingAsync()
+        public static async Task<GenerateReport> GenerateMissingAsync()
         {
             var previews = new Dictionary<string, string>();
             foreach (var record in Incomplete())
@@ -121,36 +153,59 @@ namespace Prism.Unity.Editor.Packaging
                     Debug.Log($"[Prism] No Prism preview for {record.Id} ({e.Message}); the thumbnail will be rendered.");
                 }
             }
-            return await MainThreadDispatcher.Run(() => GenerateMissing(r => previews.TryGetValue(r.Id, out var p) ? p : null),
+            return await MainThreadDispatcher.Run(() => Generate(r => previews.TryGetValue(r.Id, out var p) ? p : null),
                 TimeSpan.FromMinutes(10));
         }
 
-        static int GenerateMissing(Func<ImportRecord, string> previewFor)
+        static GenerateReport Generate(Func<ImportRecord, string> previewFor)
         {
-            var count = 0;
-            foreach (var record in Incomplete())
+            var report = new GenerateReport();
+            foreach (var record in ImportRecord.LoadAll())
             {
-                PackageBuilder.Ensure(record, previewFor(record));
-                count++;
+                try
+                {
+                    if (PackageBuilder.IsComplete(record))
+                    {
+                        PackageBuilder.Repair(record);
+                        report.Repaired++;
+                    }
+                    else
+                    {
+                        PackageBuilder.Ensure(record, previewFor(record));
+                        report.Generated++;
+                    }
+                }
+                catch (Exception e)
+                {
+                    report.Failed.Add((record.Id, e.Message));
+                    Debug.LogError($"[Prism] Could not package {record.Id}: {e.Message}");
+                }
             }
-            return count;
+            return report;
         }
 
         static List<ImportRecord> Incomplete() => ImportRecord.LoadAll().Where(r => !PackageBuilder.IsComplete(r)).ToList();
 
         // ---- convert definitions ----
 
-        /// <summary>Definitions under Assets/Prism that are not yet of the target class.</summary>
+        /// <summary>
+        /// Definitions under Assets/Prism whose class the target extends. Only those are converted, so no field is ever
+        /// dropped: a definition of a sibling class, or a conversion back to a base class, is left alone.
+        /// </summary>
         public static (int count, string[] paths) PreviewConversion(Type target)
         {
             RequireDefinitionClass(target);
-            var paths = DefinitionPaths().Where(p => AssetDatabase.GetMainAssetTypeAtPath(p) != target).ToArray();
+            var paths = DefinitionPaths().Where(p =>
+            {
+                var current = AssetDatabase.GetMainAssetTypeAtPath(p);
+                return current != target && current.IsAssignableFrom(target);
+            }).ToArray();
             return (paths.Length, paths);
         }
 
         /// <summary>
         /// Switch those definitions to the target class in place: same file, same GUID, so every reference
-        /// (catalog, Addressables, scenes) still points at them. Fields with the same name keep their values.
+        /// (catalog, Addressables, scenes) still points at them. Every existing field keeps its value; new fields start empty.
         /// </summary>
         public static int ConvertDefinitions(Type target)
         {
@@ -210,8 +265,11 @@ namespace Prism.Unity.Editor.Packaging
         {
             try
             {
-                var count = await GenerateMissingAsync();
-                EditorUtility.DisplayDialog("Prism", count == 0 ? "Every imported product already has a package." : $"Packaged {count} product(s).", "OK");
+                var report = await GenerateMissingAsync();
+                var text = report.Generated == 0 ? "Every imported product already has a package." : $"Packaged {report.Generated} product(s).";
+                if (report.Failed.Count > 0)
+                    text += $"\n\n{report.Failed.Count} could not be packaged:\n" + string.Join("\n", report.Failed.Select(f => $"{f.id}: {f.error}"));
+                EditorUtility.DisplayDialog("Prism", text, "OK");
             }
             catch (Exception e)
             {
@@ -232,7 +290,7 @@ namespace Prism.Unity.Editor.Packaging
         {
             var target = MenuTarget();
             if (!OfferConversion(target))
-                EditorUtility.DisplayDialog("Prism", $"Every definition is already a {target.Name}.", "OK");
+                EditorUtility.DisplayDialog("Prism", $"No definition can become a {target.Name} without losing fields.", "OK");
         }
 
         /// <summary>Ask, then convert. Returns false when there was nothing to convert.</summary>
@@ -242,7 +300,7 @@ namespace Prism.Unity.Editor.Packaging
             var count = PreviewConversion(target).count;
             if (count == 0) return false;
             if (EditorUtility.DisplayDialog("Prism", $"Convert {count} existing definition(s) to {target.Name}? " +
-                    "Files, GUIDs and fields with the same name are kept.", "Convert", "Not now"))
+                    "Files, GUIDs and every existing field are kept; the new fields start empty.", "Convert", "Not now"))
             {
                 try { ConvertDefinitions(target); }
                 catch (Exception e) { Debug.LogException(e); EditorUtility.DisplayDialog("Prism", "Conversion failed: " + e.Message, "OK"); }

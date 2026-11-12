@@ -89,6 +89,14 @@ namespace Prism.Unity.Editor.Tests
         }
 
         [Test]
+        public void RelocationOtherProjectRejectedWhenOldIsOffline()
+        {
+            // The usual reason to relocate is that the old path is gone; the stored name still decides.
+            var error = ProjectBinding.ValidateRelocation(Pipeline("new", "OtherProject"), Path.Combine(_tmp, "offline.json"), "Wellness");
+            StringAssert.Contains("OtherProject", error);
+        }
+
+        [Test]
         public void RelocationToMissingFileRejected()
         {
             Assert.IsNotNull(ProjectBinding.ValidateRelocation(Path.Combine(_tmp, "nope.json"), Pipeline("old", "Wellness")));
@@ -108,6 +116,7 @@ namespace Prism.Unity.Editor.Tests
                 Assert.IsNull(ProjectBinding.Relocate(newCfg));
                 Assert.AreEqual(newCfg.Replace('\\', '/'), ProjectBinding.Load().PrismProjectConfig);
                 Assert.IsTrue(stopped, "the running Prism must restart with the new project path");
+                Assert.AreEqual("Wellness", ProjectBinding.Load().ProjectName);
             }
             finally
             {

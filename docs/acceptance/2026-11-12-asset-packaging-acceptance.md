@@ -6,7 +6,7 @@
 
 **Otomatik test durumu (`tools/run_all_tests.ps1 -E2E`):**
 - Python: tüm testler geçti.
-- Unity EditMode: 154/154.
+- Unity EditMode: 164/164 (review düzeltmelerinden sonra).
 - Gerçek Prism ile uçtan uca testler: 11/11.
 
 ## Kabul senaryoları
@@ -40,7 +40,7 @@ Prism'in **DCC apps → Unity** sayfası `addIntegration` çağırır, o da `man
    - `com.unity.addressables@2.9.1` çözüldü.
    - `Prism.Assets`, `Prism.Unity.Editor` ve `Prism.Unity.Editor.Packaging` derlendi.
    - `Prism.Unity.Editor.Mcp` derlenmedi. Bu beklenen bir durum, çünkü AI Assistant paketi kurulu değil.
-5. Not: `Prism.Unity.Editor.Tests` de ekip projesine kopyalanıyor ve derleniyor (bkz. "Açık konular").
+5. Not: Bu denemede `Prism.Unity.Editor.Tests` da kopyalanıyordu. Review sonrası `Tests/` artık kopyalanmıyor (`test_install_embedded_leaves_out_tests`).
 
 ## Senin elle kontrol etmen gerekenler
 
@@ -55,5 +55,5 @@ Bunlar Prism ya da Unity penceresi gerektiriyor, otomatik testlerle denenemedi:
 
 ## Açık konular
 
-- Gömülü `com.prism.unity` paketi `Tests/` klasörünü de taşıyor. Bu yüzden ekip projelerinde test assembly'si derleniyor ve Test Runner'da görünüyor. Kopyalarken `Tests/` dışarıda bırakılabilir.
 - Tanım sınıfı çevrildikten sonra, açık bir sahnede tanıma bağlı eski referanslar sahne yeniden yüklenene kadar boş görünebilir. Diskteki referanslar (GUID) doğru kalıyor.
+- Review'dan ertelenen küçük konular branch raporunda listelendi.

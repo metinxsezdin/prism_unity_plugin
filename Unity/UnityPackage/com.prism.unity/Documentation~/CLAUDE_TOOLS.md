@@ -71,7 +71,8 @@ Update an imported product.
 ### prism_check_updates
 List imported products that have a newer version in Prism.
 - **Returns:** `[{id, current, latest, entity, product}]`, plus `{id, missing: true, entity, product}` for products that no longer
-  exist in Prism. A missing product's package is flagged `prismMissing` and kept; nothing is deleted. Tell the user.
+  exist in Prism (the product or its whole entity was deleted). A missing product's package is flagged `prismMissing` and
+  kept; nothing is deleted. Tell the user. The flag clears by itself once the product exists in Prism again.
 
 ### prism_save_version
 Save the active scene as a new Prism version.
@@ -111,14 +112,17 @@ List the cameras of the active scene.
 ### prism_generate_packages
 Create the asset package for every imported product that has none (for example products imported before packaging was turned
 on). Existing packages are left untouched.
-- **Returns:** `{generated}`, the number of products packaged.
+It also re-registers the Addressable and catalog entries of complete packages, which repairs a reset Addressables setup.
+- **Returns:** `{generated, repaired, failed: [{id, error}]}`. A product that fails (e.g. its model file is gone) is listed and skipped.
 
 ### prism_convert_definitions
 Switch every package definition to a team definition class, a subclass of `Prism.Assets.PrismAssetDefinition`.
 - **Arguments:** `className` (simple name, full name or assembly-qualified name), optional `confirm`.
 - **Confirmation:** Without `confirm` the answer is `needs_confirmation` with `{count, paths, className}`. Tell the user how many
   definitions change, then call again with `"confirm": true`.
-- **Kept:** Files, GUIDs, every reference to the definitions and fields with the same name keep their values. New fields start empty.
+- **Which:** Only definitions whose class the target extends (e.g. `PrismAssetDefinition` → `WellnessItemDefinition`), so no
+  field is ever lost. Definitions of another team class, or a conversion back to a base class, are left alone.
+- **Kept:** Files, GUIDs, every reference to the definitions and every existing field. New fields start empty.
 - **Returns:** `{converted, className}`
 - **Class file:** The class must be in a script file of the same name (`WellnessItemDefinition.cs`), or Unity cannot save assets of it.
 
@@ -134,7 +138,12 @@ Every imported product gets a package next to its model in `Assets/Prism/<entity
 | `<product>_thumb.png` | Thumbnail from Prism's preview, else a rendered frame | Prism (rewritten on update) |
 
 `package` in tool results is `{prefabPath, definitionPath, addressableKey, thumbnailPath, complete, definitionClass, prismMissing, warning?}`.
-`warning` means the Addressable address was already used by another asset; that asset was left alone and this one was not registered.
+- `prefabPath` follows the definition's `prefab` reference, so it is right even if the team moved the prefab.
+- `addressableKey` is the address the prefab actually has (the team may have renamed it). It is `null` when the prefab is
+  not addressable, usually because the address was taken by another asset: then `warning` says which, that asset was left
+  alone, and the prefab is not loadable by key until the team frees the address or picks another one.
+- `warning` also reports a definition file that exists but no longer loads (a renamed script); it is never replaced.
+- Use `prefabPath` only when `complete` is true; otherwise run `prism_generate_packages` first.
 
 **Definition fields set by Prism:** `entityType`, `entityPath`, `product`, `version`, `contentVersion`, `addressableKey`, `prefab`
 (`AssetReferenceGameObject`), `thumbnail` (`AssetReferenceTexture2D`), `prismMissing`. `displayName` is set only while empty.

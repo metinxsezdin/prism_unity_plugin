@@ -25,8 +25,8 @@ namespace Prism.Unity.Editor
         /// <summary>Filled by the asset-packaging assembly: record id → package info (prefab, definition, Addressable key, thumbnail).</summary>
         public static Func<string, JObject> PackageInfoProvider;
 
-        /// <summary>Filled by the asset-packaging assembly: package every imported product that has no complete package; returns the count.</summary>
-        public static Func<Task<int>> GeneratePackagesHandler;
+        /// <summary>Filled by the asset-packaging assembly: package every imported product that has no complete package; returns {generated, repaired, failed}.</summary>
+        public static Func<Task<JToken>> GeneratePackagesHandler;
 
         /// <summary>Filled by the asset-packaging assembly: (className, confirm) → result; throws needs_confirmation without confirm.</summary>
         public static Func<string, bool, JToken> ConvertDefinitionsHandler;
@@ -101,7 +101,7 @@ namespace Prism.Unity.Editor
                 async a =>
                 {
                     PrismApi.EnsureEditable();
-                    return new JObject { ["generated"] = await RequirePackaging(GeneratePackagesHandler)() };
+                    return await RequirePackaging(GeneratePackagesHandler)();
                 }),
             Tool("prism_convert_definitions", "Switch every package definition to a team definition class (a subclass of PrismAssetDefinition). Files, GUIDs and same-named fields are kept. Without confirm it only reports how many would change.",
                 Schema(Req("className", Str("Class name, e.g. 'WellnessItemDefinition' or 'MyGame.WellnessItemDefinition'")),

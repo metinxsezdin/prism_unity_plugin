@@ -85,6 +85,17 @@ class DialogFlowTests(unittest.TestCase):
         dialogs.run_mark_missing(cmds, [{"id": "a", "current": "v1", "latest": "v2"}])
         self.assertEqual(cmds.unity.calls, [])
 
+    def test_mark_missing_failure_is_not_fatal(self):
+        # Unity in Play Mode or compiling refuses the call; the outdated list must still be shown.
+        cmds = Cmds(AnswerCore(dialogs.CANCEL), ScriptedUnity(BridgeError("unity_busy", "Play Mode")))
+        self.assertEqual(dialogs.run_mark_missing(cmds, [{"id": "a", "missing": True}]), [])
+
+    def test_mark_missing_returns_newly_flagged_and_clears_present(self):
+        cmds = Cmds(AnswerCore(dialogs.CANCEL), ScriptedUnity({"updated": ["a", "b"], "changed": ["b"]}, {"updated": ["c"], "changed": []}))
+        changed = dialogs.run_mark_missing(cmds, [{"id": "a", "missing": True}, {"id": "b", "missing": True}], present=["c"])
+        self.assertEqual(changed, ["b"])
+        self.assertEqual(cmds.unity.calls[1], ("setPrismMissing", {"ids": ["c"], "missing": False}, True))
+
     def test_entity_from_product_data(self):
         data = {"type": "asset", "asset_path": "Props/Lotus", "product": "lotus_model", "version": "v0002", "user": "adm"}
         self.assertEqual(dialogs.entity_from_product_data(data), {"type": "asset", "asset_path": "Props/Lotus"})

@@ -6,6 +6,7 @@ using Prism.Unity.Editor.Packaging;
 using UnityEditor;
 using UnityEditor.AddressableAssets;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace Prism.Unity.Editor.Tests
 {
@@ -79,6 +80,48 @@ namespace Prism.Unity.Editor.Tests
 
             Assert.AreEqual(0, PackagingCommands.GenerateMissing());
             Assert.IsNotNull(AssetDatabase.LoadAssetAtPath<GameObject>(path).GetComponent<BoxCollider>());
+        }
+
+        [Test]
+        public void GenerateMissingSkipsBrokenRecordAndContinues()
+        {
+            new PackagingSettings { Enabled = false }.Save();
+            ImportBoth();
+            AssetDatabase.DeleteAsset($"{Lotus}/lotus_model.fbx");
+            new PackagingSettings().Save();
+            LogAssert.ignoreFailingMessages = true;
+
+            Assert.AreEqual(1, PackagingCommands.GenerateMissing());
+            AssertFullPackage(Cay, "cay_model");
+        }
+
+        [Test]
+        public void GenerateMissingRepairsAddressablesAndCatalog()
+        {
+            ImportBoth();
+            var settings = AddressableAssetSettingsDefaultObject.Settings;
+            settings.RemoveAssetEntry(AssetDatabase.AssetPathToGUID($"{Lotus}/lotus_model.prefab"));
+            settings.RemoveAssetEntry(AssetDatabase.AssetPathToGUID(CatalogUpdater.CatalogPath));
+            var catalog = AssetDatabase.LoadAssetAtPath<PrismAssetCatalog>(CatalogUpdater.CatalogPath);
+            catalog.definitions.Clear();
+            EditorUtility.SetDirty(catalog);
+
+            Assert.AreEqual(0, PackagingCommands.GenerateMissing(), "nothing new was created");
+
+            Assert.AreEqual("Props/Lotus/lotus_model", settings.FindAssetEntry(AssetDatabase.AssetPathToGUID($"{Lotus}/lotus_model.prefab")).address);
+            Assert.AreEqual(PrismAssetCatalog.Address, settings.FindAssetEntry(AssetDatabase.AssetPathToGUID(CatalogUpdater.CatalogPath)).address);
+            Assert.AreEqual(2, catalog.definitions.Count);
+        }
+
+        [Test]
+        public void ConvertNeverDropsFields()
+        {
+            new PackagingSettings { DefinitionType = typeof(TestItemDefinition).AssemblyQualifiedName }.Save();
+            ImportBoth();
+            // Back to the base class would drop unlockLevel: those definitions are left alone.
+            Assert.AreEqual(0, PackagingCommands.PreviewConversion(typeof(PrismAssetDefinition)).count);
+            Assert.AreEqual(0, PackagingCommands.ConvertDefinitions(typeof(PrismAssetDefinition)));
+            Assert.IsInstanceOf<TestItemDefinition>(AssetDatabase.LoadMainAssetAtPath($"{Lotus}/lotus_model.asset"));
         }
 
         [Test]

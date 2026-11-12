@@ -1,5 +1,4 @@
 using System.Linq;
-using UnityEditor;
 using UnityEditor.AddressableAssets;
 using UnityEditor.AddressableAssets.Settings;
 using UnityEditor.AddressableAssets.Settings.GroupSchemas;
@@ -10,22 +9,26 @@ namespace Prism.Unity.Editor.Packaging
     public static class AddressablesRegistrar
     {
         /// <summary>
-        /// Make the asset Addressable at address, in group (created if missing), with labels.
-        /// Returns a warning when the address already belongs to another asset (nothing is changed then).
-        /// An asset already in another group keeps its group and address; only labels are added.
+        /// Make the asset Addressable at address, in group (created if missing), with labels, and return the
+        /// address it has. An asset that is already Addressable keeps its group and address (the team may have
+        /// changed them); only labels are added. When the address belongs to another asset nothing changes:
+        /// the result is null and warning says why.
         /// </summary>
-        public static string Register(string assetGuid, string address, string group, string[] labels)
+        public static string Register(string assetGuid, string address, string group, string[] labels, out string warning)
         {
+            warning = null;
             var settings = AddressableAssetSettingsDefaultObject.GetSettings(true); // creates them on first use, no dialog
-
-            var taken = settings.groups.Where(g => g != null).SelectMany(g => g.entries)
-                .FirstOrDefault(e => e.address == address && e.guid != assetGuid);
-            if (taken != null)
-                return $"Addressable address '{address}' already belongs to {taken.AssetPath}; it was left unchanged and this asset was not registered.";
 
             var entry = settings.FindAssetEntry(assetGuid);
             if (entry == null)
             {
+                var taken = settings.groups.Where(g => g != null).SelectMany(g => g.entries)
+                    .FirstOrDefault(e => e.address == address && e.guid != assetGuid);
+                if (taken != null)
+                {
+                    warning = $"Addressable address '{address}' already belongs to {taken.AssetPath}; it was left unchanged and this asset was not registered.";
+                    return null;
+                }
                 var target = settings.FindGroup(group) ?? settings.CreateGroup(group, false, false, true, null,
                     typeof(BundledAssetGroupSchema), typeof(ContentUpdateGroupSchema));
                 entry = settings.CreateOrMoveEntry(assetGuid, target, false, false);
@@ -37,7 +40,7 @@ namespace Prism.Unity.Editor.Packaging
                 entry.SetLabel(label, true, false, false);
             }
             settings.SetDirty(AddressableAssetSettings.ModificationEvent.EntryModified, entry, true, true);
-            return null;
+            return entry.address;
         }
     }
 }

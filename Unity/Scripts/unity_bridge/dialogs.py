@@ -1,6 +1,10 @@
 """Prism-side windows for the interactive (menu) commands. Never used for interactive=False calls."""
 
+import logging
+
 from .protocol import BridgeError
+
+logger = logging.getLogger(__name__)
 
 # Keep open, non-modal windows alive (Qt deletes unreferenced top-level widgets).
 _open_windows = []
@@ -144,12 +148,24 @@ def open_playblast_dialog(cmds):
     dlg.activateWindow()
 
 
-def run_mark_missing(cmds, entries):
-    """Tell Unity which packages' products disappeared from Prism (nothing is deleted)."""
-    ids = [e["id"] for e in entries if e.get("missing")]
-    if ids:
-        cmds.unity.call("setPrismMissing", {"ids": ids, "missing": True}, interactive=True)
-    return ids
+def run_mark_missing(cmds, entries, present=()):
+    """Tell Unity which packages' products disappeared from Prism (nothing is deleted) and which are back.
+
+    Returns the ids newly flagged missing. Failures (Unity in Play Mode or compiling, no packaging
+    package) are logged and never stop the check.
+    """
+    changed = []
+    for ids, missing in (([e["id"] for e in entries if e.get("missing")], True), (list(present), False)):
+        if not ids:
+            continue
+        try:
+            answer = cmds.unity.call("setPrismMissing", {"ids": ids, "missing": missing}, interactive=True)
+        except BridgeError as e:
+            logger.warning("Could not update the prismMissing flags in Unity: %s", e)
+            continue
+        if missing and isinstance(answer, dict):
+            changed = list(answer.get("changed") or [])
+    return changed
 
 
 def entity_from_product_data(data):

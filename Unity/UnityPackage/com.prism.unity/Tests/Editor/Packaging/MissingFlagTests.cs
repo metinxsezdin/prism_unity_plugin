@@ -61,6 +61,36 @@ namespace Prism.Unity.Editor.Tests
         }
 
         [Test]
+        public void SetPrismMissingReportsOnlyChanges()
+        {
+            Import("lotus_v1.fbx", "v0001");
+            CollectionAssert.AreEqual(new[] { Id }, SetMissing(true)["changed"].ToObject<string[]>());
+            CollectionAssert.IsEmpty(SetMissing(true)["changed"].ToObject<string[]>());
+        }
+
+        [UnityTest]
+        public IEnumerator CheckForUpdatesClearsFlagWhenProductIsBack()
+        {
+            Import("lotus_v1.fbx", "v0001");
+            SetMissing(true);
+            JObject sent = null;
+            PrismClient.Override = (cmd, args, interactive) =>
+            {
+                if (cmd != "checkVersions") throw new PrismCommandException(ErrorCodes.UnknownCommand, "fake Prism: " + cmd);
+                sent = args;
+                return new JArray(new JObject { ["id"] = Id, ["present"] = true });
+            };
+
+            var task = PrismApi.CheckForUpdates();
+            while (!task.IsCompleted) yield return null;
+
+            Assert.IsFalse(task.IsFaulted, task.Exception?.ToString());
+            Assert.IsTrue((bool)sent["includePresent"]);
+            Assert.AreEqual(0, task.Result.Count, "present entries are not updates");
+            Assert.IsFalse(Definition.prismMissing);
+        }
+
+        [Test]
         public void ReimportClearsMissing()
         {
             Import("lotus_v1.fbx", "v0001");

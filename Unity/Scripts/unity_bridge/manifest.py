@@ -82,7 +82,8 @@ def install_embedded(project_path, plugin_dir):
         target = os.path.join(project_path, "Packages", name)
         if os.path.isdir(target):
             shutil.rmtree(target)
-        shutil.copytree(source, target)
+        # Tests stay in the plugin: their teardowns delete Assets/Prism and the Addressables settings.
+        shutil.copytree(source, target, ignore=shutil.ignore_patterns("Tests", "Tests.meta"))
         installed.append(name)
 
     data = _read(path)
@@ -94,10 +95,13 @@ def install_embedded(project_path, plugin_dir):
 
 
 def remove_embedded(project_path):
-    """Remove the embedded Prism packages. Returns True when something was removed."""
+    """Remove the embedded editor integration. Returns True when something was removed.
+
+    com.prism.assets stays: game code and every package definition depend on its types.
+    """
     _manifest_path(project_path)
     removed = False
-    for name in EMBEDDED_PACKAGES:
+    for name in ("com.prism.unity",):
         target = os.path.join(project_path, "Packages", name)
         if os.path.isdir(target):
             shutil.rmtree(target)
@@ -110,4 +114,16 @@ def write_project_binding(project_path, prism_project_config):
     folder = os.path.join(project_path, "ProjectSettings", "PrismUnity")
     os.makedirs(folder, exist_ok=True)
     path = os.path.join(folder, "project.json")
-    _write(path, OrderedDict([("prismProjectConfig", prism_project_config.replace("\\", "/"))]))
+    data = OrderedDict([("prismProjectConfig", prism_project_config.replace("\\", "/"))])
+    name = _project_name(prism_project_config)
+    if name:
+        data["projectName"] = name  # lets Unity refuse relocating to another project even when this one is offline
+    _write(path, data)
+
+
+def _project_name(prism_project_config):
+    try:
+        with open(prism_project_config, encoding="utf-8") as f:
+            return (json.load(f).get("globals") or {}).get("project_name")
+    except (OSError, ValueError, AttributeError):
+        return None

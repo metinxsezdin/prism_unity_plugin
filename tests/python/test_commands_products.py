@@ -214,5 +214,49 @@ class ProductCommandTests(unittest.TestCase):
         self.assertEqual(self.call("checkVersions", records=records)["result"][0]["missing"], True)
 
 
+    def test_deleted_entity_in_reachable_project_is_missing(self):
+        # Deleting the whole asset in Prism is the usual way a product disappears.
+        self.core.projectPath = self.tmp
+        gone = {"type": "asset", "asset_path": "Props/Deleted"}
+        records = [{"id": "Props__Deleted__m", "entity": gone, "product": "m", "version": "v0001"}]
+        self.assertEqual(self.call("checkVersions", records=records)["result"],
+                         [{"id": "Props__Deleted__m", "missing": True, "entity": gone, "product": "m"}])
+
+    def test_check_versions_reports_present_when_asked(self):
+        records = [{"id": "Props__Lotus__lotus_model", "entity": LOTUS, "product": "lotus_model", "version": "v0003"},
+                   {"id": "x", "entity": {"type": "asset", "asset_path": "Props/OnOfflineDrive"}, "product": "p", "version": "v0001"}]
+        self.assertEqual(self.call("checkVersions", records=records)["result"], [])
+        self.assertEqual(self.call("checkVersions", records=records, includePresent=True)["result"],
+                         [{"id": "Props__Lotus__lotus_model", "present": True}])
+
+
+    def _dialog_run(self, quiet, changed):
+        from unittest import mock
+        from unity_bridge import dialogs
+
+        class Unity:
+            def call(self, cmd, args=None, interactive=False, timeout=None):
+                return []
+        self.cmds.unity = Unity()
+        missing = [{"id": "gone", "missing": True, "entity": LOTUS, "product": "gone"}]
+        with mock.patch.object(self.cmds, "_check", return_value=(missing, ["present"])),                 mock.patch.object(dialogs, "run_mark_missing", return_value=changed) as mark,                 mock.patch.object(dialogs, "open_check_versions") as window:
+            self.cmds.checkVersionsDialog(quiet=quiet)
+        return mark, window
+
+    def test_quiet_check_skips_window_for_already_flagged(self):
+        mark, window = self._dialog_run(quiet=True, changed=[])
+        mark.assert_called_once()
+        self.assertEqual(mark.call_args.kwargs.get("present"), ["present"])
+        window.assert_not_called()
+
+    def test_quiet_check_shows_newly_missing(self):
+        _, window = self._dialog_run(quiet=True, changed=["gone"])
+        window.assert_called_once()
+
+    def test_manual_check_always_shows_missing(self):
+        _, window = self._dialog_run(quiet=False, changed=[])
+        window.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()
