@@ -128,6 +128,41 @@ namespace Prism.Unity.Editor.Tests
         }
 
         [Test]
+        public void UnknownDefinitionClassIsReported()
+        {
+            // M2: a class removed or renamed in code must not silently become the base class.
+            new PackagingSettings { DefinitionType = "Wellness.Gone.ItemDefinition, Wellness" }.Save();
+            var result = Import("lotus_v1.fbx", "v0001");
+            Assert.AreEqual(typeof(PrismAssetDefinition), AssetDatabase.LoadAssetAtPath<PrismAssetDefinition>($"{Folder}/lotus_model.asset").GetType());
+            StringAssert.Contains("Wellness.Gone.ItemDefinition", PackageBuilder.Describe(result.Record).Warning);
+        }
+
+        [Test]
+        public void WarningIsKeptAcrossDomainReloads()
+        {
+            // M6: SessionState survives a script recompile; a static field does not.
+            AssetDatabase.CreateFolder("Assets", "PrismTestOther");
+            var other = ScriptableObject.CreateInstance<PrismAssetCatalog>();
+            AssetDatabase.CreateAsset(other, "Assets/PrismTestOther/Other.asset");
+            var settings = AddressableAssetSettingsDefaultObject.GetSettings(true);
+            var otherEntry = settings.CreateOrMoveEntry(AssetDatabase.AssetPathToGUID("Assets/PrismTestOther/Other.asset"), settings.DefaultGroup);
+            otherEntry.address = Address;
+            var otherGuid = otherEntry.guid;
+            try
+            {
+                var result = Import("lotus_v1.fbx", "v0001");
+                StringAssert.Contains(Address, SessionState.GetString(PackageBuilder.WarningStateKey(result.Record.Id), ""));
+                settings.RemoveAssetEntry(otherGuid);
+                PackageBuilder.Repair(result.Record);
+                Assert.AreEqual("", SessionState.GetString(PackageBuilder.WarningStateKey(result.Record.Id), ""));
+            }
+            finally
+            {
+                if (settings.FindAssetEntry(otherGuid) != null) settings.RemoveAssetEntry(otherGuid);
+            }
+        }
+
+        [Test]
         public void AddressCollisionIsNotOverwritten()
         {
             AssetDatabase.CreateFolder("Assets", "PrismTestOther");

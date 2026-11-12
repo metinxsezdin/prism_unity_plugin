@@ -65,6 +65,79 @@ namespace Prism.Unity.Editor.Tests
             Assert.AreEqual("Prism sq01", s.FormatGroup(shot));
         }
 
+        [Test]
+        public void GroupFormatNeverYieldsSlashes()
+        {
+            // M5: an Addressables group name is a file name; {entity} brings a slash with it.
+            var s = new PackagingSettings { GroupFormat = "{entity}" };
+            Assert.AreEqual("Props-Lotus", s.FormatGroup(PrismEntity.Asset("Props/Lotus")));
+        }
+
+        [Test]
+        public void EmptyFormatsFallBackToDefaults()
+        {
+            var s = new PackagingSettings { AddressFormat = " ", GroupFormat = "" };
+            Assert.AreEqual("Props/Lotus/lotus_model", s.FormatAddress(PrismEntity.Asset("Props/Lotus"), "lotus_model"));
+            Assert.AreEqual("Prism Props", s.FormatGroup(PrismEntity.Asset("Props/Lotus")));
+        }
+
+        [Test]
+        public void ProblemsNameAnAddressThatIsNotUnique()
+        {
+            Assert.IsEmpty(new PackagingSettings().Problems());
+            var problems = new PackagingSettings { AddressFormat = "{category}" }.Problems();
+            Assert.AreEqual(1, problems.Count);
+            StringAssert.Contains("{product}", problems[0]);
+        }
+
+        [Test]
+        public void PickerListsOnlyClassesThatReachPlayerBuilds()
+        {
+            // M1: a class in an editor-only assembly is lost from player builds.
+            var types = PrismSettingsProvider.DefinitionTypes();
+            CollectionAssert.Contains(types, typeof(Prism.Assets.PrismAssetDefinition));
+            CollectionAssert.DoesNotContain(types, typeof(TestItemDefinition));
+        }
+
+        [Test]
+        public void PickerSelectionToleratesNullType()
+        {
+            // M3: "definitionType": null in settings.json.
+            Assert.AreEqual(0, PrismSettingsProvider.SelectedIndex(PrismSettingsProvider.DefinitionTypes(), null));
+        }
+
+        [Test]
+        public void SettingsPageRereadsAFileChangedOnDisk()
+        {
+            // M3: after a git pull the page must not write its stale copy back.
+            new PackagingSettings { AddressFormat = "{product}" }.Save();
+            Assert.AreEqual("{product}", PrismSettingsProvider.CurrentSettings().AddressFormat);
+            new PackagingSettings { AddressFormat = "pulled/{product}" }.Save();
+            File.SetLastWriteTimeUtc(PackagingSettings.FilePath, System.DateTime.UtcNow.AddMinutes(1));
+            Assert.AreEqual("pulled/{product}", PrismSettingsProvider.CurrentSettings().AddressFormat);
+        }
+
+        [Test]
+        public void SettingsPageLooksForThePluginOnce()
+        {
+            // M10: the page repaints often; finding the plugin reads files.
+            var calls = 0;
+            var original = PrismSettingsProvider.PluginDirSource;
+            PrismSettingsProvider.PluginDirSource = () => { calls++; return "X"; };
+            try
+            {
+                PrismSettingsProvider.ResetCache();
+                Assert.AreEqual("X", PrismSettingsProvider.CachedPluginDir());
+                Assert.AreEqual("X", PrismSettingsProvider.CachedPluginDir());
+                Assert.AreEqual(1, calls);
+            }
+            finally
+            {
+                PrismSettingsProvider.PluginDirSource = original;
+                PrismSettingsProvider.ResetCache();
+            }
+        }
+
         string Pipeline(string folder, string name)
         {
             var dir = Path.Combine(_tmp, folder, "00_Pipeline");

@@ -1,6 +1,6 @@
 {
   "name": "com.prism.unity",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "displayName": "Prism Pipeline Integration",
   "description": "Prism Pipeline 2 integration for the Unity Editor: versioned product import and update, scene versioning, playblasts, and Claude (Unity MCP) access.",
   "unity": "6000.5",

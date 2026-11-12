@@ -150,7 +150,8 @@ namespace Prism.Unity.Editor.Tests
         {
             ImportBoth();
             PackagingCommands.ConvertDefinitions(typeof(TestItemDefinition));
-            var catalog = AssetDatabase.LoadAssetAtPath<PrismAssetCatalog>(CatalogUpdater.CatalogPath);            var found = catalog.Find("Props/Lotus", "lotus_model");
+            var catalog = AssetDatabase.LoadAssetAtPath<PrismAssetCatalog>(CatalogUpdater.CatalogPath);
+            var found = catalog.Find("Props/Lotus", "lotus_model");
             Assert.IsInstanceOf<TestItemDefinition>(found);
             Assert.AreEqual(2, catalog.OfType<TestItemDefinition>().Count());
         }

@@ -96,7 +96,7 @@ You can also add the same folder from the plugins section of Prism's settings.
    - `com.prism.assets`: the runtime types of asset packages. It pulls in Addressables 2.9.1, which ships with Unity 6000.5.
 4. Open the project in Unity. A **Prism** menu appears.
 
-The packages are copies, not links to this repository, so the project works on machines without the plugin, and they go into Git with the project. To upgrade, run step 2 again. Removing the integration in Prism removes `com.prism.unity` only; `com.prism.assets` stays because game code and the definitions use its types.
+The packages are copies, not links to this repository, so the project works on machines without the plugin, and they go into Git with the project. To upgrade, run step 2 again. When the plugin on a machine is newer than the copy in the project, Unity says so in the Console and on Project Settings → Prism. Bump `version` in a package's `package.json` whenever you change it, so the warning can tell. Removing the integration in Prism removes `com.prism.unity` only; `com.prism.assets` stays because game code and the definitions use its types.
 
 If Prism is installed somewhere else, set the path once in Unity: `EditorPrefs.SetString("PrismUnity.PrismRoot", @"D:\Prism2")`.
 
@@ -183,7 +183,7 @@ foreach (var item in catalog.ByCategory("Props"))
 - A definition file that no longer loads, typically after renaming its class, is left untouched with a warning.
 - Conversion only goes to a class that extends the current one, so no field is lost.
 
-**Project Settings → Prism** turns packaging on or off and sets the definition class and the address and group formats. With packaging off, imports behave as before: only the model is written.
+**Project Settings → Prism** turns packaging on or off and sets the definition class and the address and group formats. The class list shows only classes that reach player builds (not ones in an editor-only assembly). An empty format means the default; characters a file name cannot hold, such as the `/` of `{entity}`, become `-` in group names; the page warns when the address format lacks `{entity}` or `{product}`. If the chosen class no longer exists, new definitions are created as `PrismAssetDefinition` and the package reports a warning. With packaging off, imports behave as before: only the model is written.
 
 ## Using it with Claude
 

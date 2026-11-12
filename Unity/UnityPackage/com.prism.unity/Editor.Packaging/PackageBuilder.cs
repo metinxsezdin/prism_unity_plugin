@@ -32,7 +32,6 @@ namespace Prism.Unity.Editor.Packaging
     public static class PackageBuilder
     {
         const int ThumbnailSize = 256;
-        static readonly Dictionary<string, string> Warnings = new Dictionary<string, string>();
 
         static PackageBuilder()
         {
@@ -42,6 +41,9 @@ namespace Prism.Unity.Editor.Packaging
                     Ensure(record, resolved?.PreviewPath);
             };
         }
+
+        /// <summary>Where a package's last warning is kept: SessionState survives script recompiles.</summary>
+        public static string WarningStateKey(string recordId) => "PrismUnity.PackageWarning." + recordId;
 
         public static PackageInfo Describe(ImportRecord record)
         {
@@ -58,7 +60,8 @@ namespace Prism.Unity.Editor.Packaging
             if (!string.IsNullOrEmpty(linkedPath) && AssetDatabase.LoadAssetAtPath<GameObject>(linkedPath) != null)
                 info.PrefabPath = linkedPath;
             info.AddressableKey = AddressableAssetSettingsDefaultObject.Settings?.FindAssetEntry(AssetDatabase.AssetPathToGUID(info.PrefabPath))?.address;
-            Warnings.TryGetValue(record.Id, out info.Warning);
+            var warning = SessionState.GetString(WarningStateKey(record.Id), "");
+            info.Warning = warning.Length == 0 ? null : warning;
             return info;
         }
 
@@ -125,7 +128,8 @@ namespace Prism.Unity.Editor.Packaging
 
             info.Warning = warnings.Count == 0 ? null : string.Join(" ", warnings);
             if (info.Warning != null) Debug.LogWarning("[Prism] " + info.Warning);
-            Warnings[record.Id] = info.Warning;
+            if (info.Warning == null) SessionState.EraseString(WarningStateKey(record.Id));
+            else SessionState.SetString(WarningStateKey(record.Id), info.Warning);
         }
 
         static string Register(string assetPath, string address, string group, string[] labels, List<string> warnings)
@@ -168,7 +172,12 @@ namespace Prism.Unity.Editor.Packaging
                              "It was left untouched; fix the script reference to update it.");
                 return null;
             }
-            var definition = (PrismAssetDefinition)ScriptableObject.CreateInstance(DefinitionType(settings));
+            var type = DefinitionType(settings);
+            if (type == typeof(PrismAssetDefinition) && !string.IsNullOrEmpty(settings.DefinitionType)
+                && settings.DefinitionType.Split(',')[0].Trim() != typeof(PrismAssetDefinition).FullName)
+                warnings.Add($"The definition class '{settings.DefinitionType}' (Project Settings → Prism) was not found or is not a " +
+                             $"{nameof(PrismAssetDefinition)}; {path} was created as {nameof(PrismAssetDefinition)}.");
+            var definition = (PrismAssetDefinition)ScriptableObject.CreateInstance(type);
             AssetDatabase.CreateAsset(definition, path);
             return definition;
         }
