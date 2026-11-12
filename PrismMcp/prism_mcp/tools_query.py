@@ -183,5 +183,5 @@ def get_dependencies(ctx, scenefile):
     ctx.require_project()
     if not os.path.isfile(scenefile or ""):
         raise BridgeError("source_unavailable", "Scene file not found: %s" % scenefile, {"path": scenefile})
-    deps = ctx.run(lambda c: c.entities.getDependencies(scenefile)) or []
+    deps = ctx.run(lambda c: c.entities.getDependencies(os.path.normpath(scenefile))) or []
     return {"scenefile": scenefile.replace("\\", "/"), "dependencies": [d.replace("\\", "/") for d in deps]}
