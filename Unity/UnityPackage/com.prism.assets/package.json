@@ -1,0 +1,10 @@
+{
+  "name": "com.prism.assets",
+  "version": "0.1.0",
+  "displayName": "Prism Assets",
+  "description": "Runtime data for Prism products in Unity: an asset definition per product and a catalog of all of them, with Addressable references.",
+  "unity": "6000.5",
+  "dependencies": {
+    "com.unity.addressables": "2.9.1"
+  }
+}

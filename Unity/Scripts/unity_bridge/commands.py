@@ -215,13 +215,25 @@ class PrismCommands(object):
             )
         return described
 
-    def checkVersions(self, records):
-        outdated = []
+    def checkVersions(self, records, includePresent=False):
+        """Outdated and missing records; with includePresent also {id, present: True} for every other reachable one."""
+        results, present = self._check(records)
+        if includePresent:
+            results = results + [{"id": i, "present": True} for i in present]
+        return results
+
+    def _check(self, records):
+        """(outdated + missing entries, ids of records whose product exists in Prism)."""
+        outdated, present = [], []
         for record in records:
             try:
                 latest = self.resolveVersion(record["entity"], record["product"])
             except BridgeError:
-                continue  # unreachable products are reported by the import itself, not here
+                if self._product_is_gone(record["entity"], record["product"]):
+                    outdated.append({"id": record["id"], "missing": True,
+                                     "entity": record["entity"], "product": record["product"]})
+                continue  # otherwise unreachable (offline drive): reported by the import itself
+            present.append(record["id"])
             # Compare what the files contain: "master" is a copy of a numbered version, and Unity
             # holds a copy of that copy, so it is outdated when master moves on.
             current_content = record.get("contentVersion") or record.get("version")
@@ -229,7 +241,7 @@ class PrismCommands(object):
                 outdated.append({"id": record["id"], "current": record.get("version"), "latest": latest["version"],
                                  "currentContent": current_content, "latestContent": latest["contentVersion"],
                                  "entity": record["entity"], "product": record["product"]})
-        return outdated
+        return outdated, present
 
     def importDialog(self):
         from . import dialogs
@@ -241,12 +253,52 @@ class PrismCommands(object):
         """quiet=True (startup check): say nothing when everything is current."""
         from . import dialogs
 
-        outdated = self.checkVersions(self.unity.call("listImported") or [])
-        if outdated:
-            dialogs.open_check_versions(self, outdated)
+        results, present = self._check(self.unity.call("listImported") or [])
+        missing = [e for e in results if e.get("missing")]
+        outdated = [e for e in results if not e.get("missing")]
+        changed = dialogs.run_mark_missing(self, missing, present=present)
+        if quiet:
+            # The startup check repeats on every launch: only newly removed products are news.
+            missing = [e for e in missing if e["id"] in changed]
+        if outdated or missing:
+            dialogs.open_check_versions(self, outdated, missing)
         elif not quiet:
             self.core.popup("All Prism imports in this Unity project are up to date.", title="Prism", severity="info")
-        return outdated
+        return results
+
+    def _preview_path(self, version):
+        """Prism's product preview of this version, else the entity's preview, else ""."""
+        candidates = []
+        try:
+            candidates.append(self.core.products.getProductPreviewPath(version.get("path") or ""))
+        except Exception:
+            pass
+        try:
+            entity = {k: version[k] for k in ("type", "asset_path", "sequence", "shot") if version.get(k)}
+            if entity:
+                candidates.append(self.core.entities.getEntityPreviewPath(entity))
+        except Exception:
+            pass
+        for path in candidates:
+            if path and os.path.isfile(path):
+                return path.replace("\\", "/")
+        return ""
+
+    def _product_is_gone(self, entity, product):
+        """True when the entity is reachable in Prism but has no such product (not an offline drive)."""
+        try:
+            entity_path = self.core.getEntityPath(entity=entity)
+        except Exception:
+            return False
+        if not entity_path:
+            return False
+        if not os.path.isdir(entity_path):
+            # The whole entity is gone (deleted or renamed in Prism) when the project itself is reachable;
+            # otherwise the drive is offline and nothing can be said.
+            root = getattr(self.core, "projectPath", "") or ""
+            return bool(root) and os.path.isdir(root)
+        names = [p.get("product") for p in (self.core.products.getProductsFromEntity(entity) or [])]
+        return product not in names
 
     def _describe_version(self, version):
         products = self.core.products
@@ -267,6 +319,7 @@ class PrismCommands(object):
         return {
             "version": version.get("version"),
             "contentVersion": content,
+            "previewPath": self._preview_path(version),
             "comment": info.get("comment") or "",
             "user": info.get("user") or info.get("username") or "",
             "date": info.get("date") or "",

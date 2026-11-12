@@ -14,6 +14,8 @@ namespace Prism.Unity.Editor
         [JsonProperty("contentVersion")] public string ContentVersion;
         [JsonProperty("filepath")] public string FilePath;
         [JsonProperty("location")] public string Location;
+        /// <summary>Prism's preview image of this version (product preview, else entity preview), or empty.</summary>
+        [JsonProperty("previewPath")] public string PreviewPath;
     }
 
     public class ImportResult
@@ -31,6 +33,12 @@ namespace Prism.Unity.Editor
     public static class ProductImporter
     {
         public const string Root = "Assets/Prism";
+
+        /// <summary>
+        /// Raised after every successful import or update, on the main thread. The packaging assembly
+        /// builds the prefab, definition, thumbnail and Addressable entries from here.
+        /// </summary>
+        public static event Action<ImportRecord, ResolvedVersion> Imported;
         static readonly string[] Supported = { ".fbx", ".obj", ".abc" };
         const string AlembicPackage = "com.unity.formats.alembic";
 
@@ -95,6 +103,15 @@ namespace Prism.Unity.Editor
                 ImportedAt = DateTime.UtcNow.ToString("o"),
             };
             record.Save();
+            try
+            {
+                Imported?.Invoke(record, v);
+            }
+            catch (Exception e)
+            {
+                // The import itself succeeded; report the packaging problem without undoing it.
+                UnityEngine.Debug.LogException(e);
+            }
             return new ImportResult { Record = record, Updated = updated, Changes = changes };
         }
 
@@ -131,7 +148,7 @@ namespace Prism.Unity.Editor
             }
         }
 
-        internal static void EnsureFolder(string assetFolder)
+        public static void EnsureFolder(string assetFolder)
         {
             if (AssetDatabase.IsValidFolder(assetFolder)) return;
             var parent = Path.GetDirectoryName(assetFolder).Replace('\\', '/');

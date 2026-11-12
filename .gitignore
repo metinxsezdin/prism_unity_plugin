@@ -21,3 +21,5 @@ __pycache__/
 # Prism dev backups
 *.bak
 *.slnx
+TestProject/Assets/AddressableAssetsData/
+TestProject/Assets/AddressableAssetsData.meta

@@ -41,13 +41,36 @@ namespace Prism.Unity.Editor
 
         public static IReadOnlyList<ImportRecord> ListImported() => ImportRecord.LoadAll();
 
-        /// <summary>Imported products that have a newer version in Prism: [{id, current, latest, entity, product}].</summary>
+        /// <summary>
+        /// Raised on the main thread after a check with (record ids whose product no longer exists in Prism,
+        /// record ids whose product exists). The packaging assembly sets or clears their definitions'
+        /// prismMissing flag; nothing is ever deleted. Records Prism could not reach are in neither list.
+        /// </summary>
+        public static event Action<IReadOnlyList<string>, IReadOnlyList<string>> AvailabilityReported;
+
+        /// <summary>
+        /// Imported products that have a newer version in Prism: [{id, current, latest, entity, product}],
+        /// plus [{id, missing: true, entity, product}] for products that disappeared from Prism.
+        /// </summary>
         public static async Task<JArray> CheckForUpdates()
         {
             var records = JArray.FromObject(ListImported());
             if (records.Count == 0) return new JArray();
-            return (JArray)await PrismClient.SendAsync("checkVersions", new JObject { ["records"] = records }, interactive: false,
-                timeout: TimeSpan.FromSeconds(60));
+            var answer = (JArray)await PrismClient.SendAsync("checkVersions", new JObject { ["records"] = records, ["includePresent"] = true },
+                interactive: false, timeout: TimeSpan.FromSeconds(60));
+            var entries = answer.OfType<JObject>().ToList();
+            List<string> Ids(Func<JObject, bool> which) =>
+                entries.Where(which).Select(e => (string)e["id"]).Where(id => !string.IsNullOrEmpty(id)).ToList();
+            var missing = Ids(e => (bool?)e["missing"] == true);
+            var present = Ids(e => (bool?)e["present"] == true);
+            if ((missing.Count > 0 || present.Count > 0) && AvailabilityReported != null)
+                await MainThreadDispatcher.Run(() =>
+                {
+                    try { AvailabilityReported?.Invoke(missing, present); }
+                    catch (Exception e) { UnityEngine.Debug.LogException(e); }
+                    return true;
+                }, TimeSpan.FromSeconds(60));
+            return new JArray(entries.Where(e => (bool?)e["present"] != true));
         }
 
         public static async Task<JArray> ListProducts(PrismEntity entity) =>

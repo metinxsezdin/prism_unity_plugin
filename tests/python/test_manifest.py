@@ -79,6 +79,94 @@ class ManifestTests(unittest.TestCase):
         self.assertTrue(entry.startswith("file:"))
         self.assertNotIn("\\", entry)
 
+    # --- embedded packages (copied into the Unity project, shared through Git) ---
+
+    def make_plugin(self):
+        plugin = os.path.join(self.tmp, "Plugin Dir")
+        for name in ("com.prism.unity", "com.prism.assets"):
+            folder = os.path.join(plugin, "UnityPackage", name)
+            os.makedirs(os.path.join(folder, "Editor"), exist_ok=True)
+            with open(os.path.join(folder, "package.json"), "w") as f:
+                json.dump({"name": name, "version": "0.2.0"}, f)
+            with open(os.path.join(folder, "Editor", "Code.cs"), "w") as f:
+                f.write("// code")
+        return plugin
+
+    def test_install_embedded_copies_both_packages(self):
+        make_unity_project(self.project)
+        installed = manifest.install_embedded(self.project, self.make_plugin())
+        self.assertEqual(sorted(installed), ["com.prism.assets", "com.prism.unity"])
+        for name in installed:
+            self.assertTrue(os.path.isfile(os.path.join(self.project, "Packages", name, "package.json")))
+            self.assertTrue(os.path.isfile(os.path.join(self.project, "Packages", name, "Editor", "Code.cs")))
+
+    def test_install_embedded_removes_machine_specific_file_entry(self):
+        make_unity_project(self.project)
+        manifest.add_package(self.project, self.package)  # what v1 wrote
+        manifest.install_embedded(self.project, self.make_plugin())
+        deps = read_manifest(self.project)["dependencies"]
+        self.assertNotIn("com.prism.unity", deps)
+        self.assertNotIn("com.prism.assets", deps)
+        self.assertEqual(deps["com.unity.timeline"], "1.8.12")
+
+    def test_install_embedded_replaces_old_copy(self):
+        make_unity_project(self.project)
+        plugin = self.make_plugin()
+        manifest.install_embedded(self.project, plugin)
+        stale = os.path.join(self.project, "Packages", "com.prism.unity", "Editor", "Removed.cs")
+        with open(stale, "w") as f:
+            f.write("// from an older version")
+        manifest.install_embedded(self.project, plugin)
+        self.assertFalse(os.path.exists(stale))
+
+    def test_install_embedded_turkish_path(self):
+        project = os.path.join(self.tmp, "Wellness Proje Ğüşİ")
+        make_unity_project(project)
+        self.assertEqual(len(manifest.install_embedded(project, self.make_plugin())), 2)
+
+    def test_remove_embedded(self):
+        make_unity_project(self.project)
+        manifest.install_embedded(self.project, self.make_plugin())
+        self.assertTrue(manifest.remove_embedded(self.project))
+        self.assertFalse(os.path.exists(os.path.join(self.project, "Packages", "com.prism.unity")))
+        self.assertFalse(manifest.remove_embedded(self.project))
+
+    def test_install_embedded_leaves_out_tests(self):
+        # The package's tests delete Assets/Prism and the Addressables settings in their teardown:
+        # they must never reach a team project.
+        make_unity_project(self.project)
+        plugin = self.make_plugin()
+        tests = os.path.join(plugin, "UnityPackage", "com.prism.unity", "Tests")
+        os.makedirs(os.path.join(tests, "Editor"))
+        with open(os.path.join(tests, "Editor", "Danger.cs"), "w") as f:
+            f.write("// deletes Assets/Prism")
+        with open(tests + ".meta", "w") as f:
+            f.write("guid: 1")
+        manifest.install_embedded(self.project, plugin)
+        target = os.path.join(self.project, "Packages", "com.prism.unity")
+        self.assertFalse(os.path.exists(os.path.join(target, "Tests")))
+        self.assertFalse(os.path.exists(os.path.join(target, "Tests.meta")))
+        self.assertTrue(os.path.isfile(os.path.join(target, "Editor", "Code.cs")))
+
+    def test_remove_embedded_keeps_runtime_package(self):
+        # Game code references Prism.Assets; removing the integration must not break it.
+        make_unity_project(self.project)
+        manifest.install_embedded(self.project, self.make_plugin())
+        manifest.remove_embedded(self.project)
+        self.assertFalse(os.path.exists(os.path.join(self.project, "Packages", "com.prism.unity")))
+        self.assertTrue(os.path.isfile(os.path.join(self.project, "Packages", "com.prism.assets", "package.json")))
+
+    def test_write_project_binding_stores_project_name(self):
+        make_unity_project(self.project)
+        config = os.path.join(self.tmp, "Wellness", "00_Pipeline", "pipeline.json")
+        os.makedirs(os.path.dirname(config))
+        with open(config, "w", encoding="utf-8") as f:
+            json.dump({"globals": {"project_name": "Wellness"}}, f)
+        manifest.write_project_binding(self.project, config)
+        path = os.path.join(self.project, "ProjectSettings", "PrismUnity", "project.json")
+        with open(path, encoding="utf-8") as f:
+            self.assertEqual(json.load(f)["projectName"], "Wellness")
+
     def test_write_project_binding(self):
         make_unity_project(self.project)
         manifest.write_project_binding(self.project, r"M:\Wellness\00_Pipeline\pipeline.json")

@@ -60,6 +60,17 @@ def main():
             existing.append(name)
         if not core.products.getVersionsFromProduct(CAY, "cay_model"):
             publish(CAY, "cay_model", [os.path.join(FIXTURES, "cay_v1.fbx")], "first cup")
+
+        # A product preview for lotus_model v0002 (solid red, 64x64): the packaging tests check
+        # that Unity's thumbnail comes from Prism's preview.
+        from qtpy.QtGui import QColor, QPixmap
+
+        v2 = next(v for v in core.products.getVersionsFromProduct(LOTUS, "lotus_model") if v.get("version") == "v0002")
+        if not os.path.isfile(core.products.getProductPreviewPath(v2["path"])):
+            pixmap = QPixmap(64, 64)
+            pixmap.fill(QColor(255, 0, 0))
+            core.products.setProductPreview(v2["path"], pixmap)
+            print("wrote preview for lotus_model v0002")
     finally:
         if previous:
             core.setConfig("globals", "current project", previous)

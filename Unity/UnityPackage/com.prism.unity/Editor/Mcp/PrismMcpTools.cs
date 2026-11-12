@@ -22,6 +22,15 @@ namespace Prism.Unity.Editor
             internal Func<JObject, Task<JToken>> Handler;
         }
 
+        /// <summary>Filled by the asset-packaging assembly: record id → package info (prefab, definition, Addressable key, thumbnail).</summary>
+        public static Func<string, JObject> PackageInfoProvider;
+
+        /// <summary>Filled by the asset-packaging assembly: package every imported product that has no complete package; returns {generated, repaired, failed}.</summary>
+        public static Func<Task<JToken>> GeneratePackagesHandler;
+
+        /// <summary>Filled by the asset-packaging assembly: (className, confirm) → result; throws needs_confirmation without confirm.</summary>
+        public static Func<string, bool, JToken> ConvertDefinitionsHandler;
+
         // Declared before Tools: static fields initialize in textual order.
         static readonly JObject EntitySchema = new JObject
         {
@@ -47,17 +56,17 @@ namespace Prism.Unity.Editor
                 async a => await PrismApi.ListVersions(UnityCommands.RequireEntity(a), UnityCommands.RequireString(a, "product"))),
             Tool("prism_list_imported", "List the Prism products imported into this Unity project, with their versions and asset paths.",
                 Schema(),
-                a => Task.FromResult<JToken>(JArray.FromObject(PrismApi.ListImported()))),
+                a => Task.FromResult<JToken>(new JArray(PrismApi.ListImported().Select(r => WithPackage(JObject.FromObject(r), r.Id))))),
             Tool("prism_import", "Import a Prism product version into Assets/Prism/<entity>/<product>/. Re-importing updates in place and keeps material assignments.",
                 Schema(Req("entity", EntitySchema), Req("product", Str("Product name")),
                     Opt("version", Str("'latest' (default), 'master' or e.g. 'v0002'")),
                     Opt("confirm", Bool("Apply even if the new version renames/removes objects or materials (only after asking the user)"))),
-                async a => JObject.FromObject(await PrismApi.ImportProduct(UnityCommands.RequireEntity(a), UnityCommands.RequireString(a, "product"),
+                async a => WithPackage(await PrismApi.ImportProduct(UnityCommands.RequireEntity(a), UnityCommands.RequireString(a, "product"),
                     (string)a["version"] ?? "latest", (bool?)a["confirm"] ?? false))),
             Tool("prism_update", "Update an imported product (by record id from prism_list_imported) to another version, 'latest' by default.",
                 Schema(Req("recordId", Str("Record id, e.g. Props__Lotus__lotus_model")), Opt("version", Str("'latest' (default) or e.g. 'v0003'")),
                     Opt("confirm", Bool("Apply a breaking update (only after asking the user)"))),
-                async a => JObject.FromObject(await PrismApi.UpdateProduct(UnityCommands.RequireString(a, "recordId"),
+                async a => WithPackage(await PrismApi.UpdateProduct(UnityCommands.RequireString(a, "recordId"),
                     (string)a["version"] ?? "latest", (bool?)a["confirm"] ?? false))),
             Tool("prism_check_updates", "List imported products that have a newer version in Prism.",
                 Schema(),
@@ -87,7 +96,35 @@ namespace Prism.Unity.Editor
                     CommandRegistry.TryGet("listCameras", out var h, out _);
                     return Task.FromResult(h(new JObject(), new CommandContext()));
                 }),
+            Tool("prism_generate_packages", "Create the asset package (prefab variant, definition, thumbnail, Addressable entries, catalog entry) for every imported product that has none. Existing packages are left as they are.",
+                Schema(),
+                async a =>
+                {
+                    PrismApi.EnsureEditable();
+                    return await RequirePackaging(GeneratePackagesHandler)();
+                }),
+            Tool("prism_convert_definitions", "Switch every package definition to a team definition class (a subclass of PrismAssetDefinition). Files, GUIDs and same-named fields are kept. Without confirm it only reports how many would change.",
+                Schema(Req("className", Str("Class name, e.g. 'WellnessItemDefinition' or 'MyGame.WellnessItemDefinition'")),
+                    Opt("confirm", Bool("Convert (only after telling the user how many definitions change)"))),
+                a =>
+                {
+                    PrismApi.EnsureEditable();
+                    return Task.FromResult(RequirePackaging(ConvertDefinitionsHandler)(UnityCommands.RequireString(a, "className"), (bool?)a["confirm"] ?? false));
+                }),
         };
+
+        static JObject WithPackage(ImportResult result) => WithPackage(JObject.FromObject(result), result.Record?.Id);
+
+        static JObject WithPackage(JObject json, string recordId)
+        {
+            var package = recordId == null ? null : PackageInfoProvider?.Invoke(recordId);
+            if (package != null) json["package"] = package;
+            return json;
+        }
+
+        static T RequirePackaging<T>(T handler) where T : class =>
+            handler ?? throw new PrismCommandException(ErrorCodes.MissingPackage,
+                "Asset packaging is not available: the com.prism.assets package is not installed in this Unity project.");
 
         public static async Task<JObject> Invoke(string toolName, JObject args)
         {

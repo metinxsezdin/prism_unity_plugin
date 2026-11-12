@@ -1,6 +1,7 @@
 """Adding and removing the com.prism.unity package in a Unity project's Packages/manifest.json."""
 
 import json
+import shutil
 import os
 from collections import OrderedDict
 
@@ -63,9 +64,66 @@ def remove_package(project_path):
     return True
 
 
+EMBEDDED_PACKAGES = ("com.prism.unity", "com.prism.assets")
+
+
+def install_embedded(project_path, plugin_dir):
+    """Copy the Prism packages into <project>/Packages so the project carries them (and Git shares them).
+
+    Replaces an existing copy, and removes v1's machine-specific "file:" manifest entries.
+    Returns the names of the packages installed.
+    """
+    path = _manifest_path(project_path)
+    installed = []
+    for name in EMBEDDED_PACKAGES:
+        source = os.path.join(plugin_dir, "UnityPackage", name)
+        if not os.path.isfile(os.path.join(source, "package.json")):
+            continue
+        target = os.path.join(project_path, "Packages", name)
+        if os.path.isdir(target):
+            shutil.rmtree(target)
+        # Tests stay in the plugin: their teardowns delete Assets/Prism and the Addressables settings.
+        shutil.copytree(source, target, ignore=shutil.ignore_patterns("Tests", "Tests.meta"))
+        installed.append(name)
+
+    data = _read(path)
+    deps = data.get("dependencies") or OrderedDict()
+    if any(name in deps for name in EMBEDDED_PACKAGES):
+        data["dependencies"] = OrderedDict((k, v) for k, v in deps.items() if k not in EMBEDDED_PACKAGES)
+        _write(path, data)
+    return installed
+
+
+def remove_embedded(project_path):
+    """Remove the embedded editor integration. Returns True when something was removed.
+
+    com.prism.assets stays: game code and every package definition depend on its types.
+    """
+    _manifest_path(project_path)
+    removed = False
+    for name in ("com.prism.unity",):
+        target = os.path.join(project_path, "Packages", name)
+        if os.path.isdir(target):
+            shutil.rmtree(target)
+            removed = True
+    return removed
+
+
 def write_project_binding(project_path, prism_project_config):
     """Pin the Prism project for this Unity project (ProjectSettings/PrismUnity/project.json)."""
     folder = os.path.join(project_path, "ProjectSettings", "PrismUnity")
     os.makedirs(folder, exist_ok=True)
     path = os.path.join(folder, "project.json")
-    _write(path, OrderedDict([("prismProjectConfig", prism_project_config.replace("\\", "/"))]))
+    data = OrderedDict([("prismProjectConfig", prism_project_config.replace("\\", "/"))])
+    name = _project_name(prism_project_config)
+    if name:
+        data["projectName"] = name  # lets Unity refuse relocating to another project even when this one is offline
+    _write(path, data)
+
+
+def _project_name(prism_project_config):
+    try:
+        with open(prism_project_config, encoding="utf-8") as f:
+            return (json.load(f).get("globals") or {}).get("project_name")
+    except (OSError, ValueError, AttributeError):
+        return None

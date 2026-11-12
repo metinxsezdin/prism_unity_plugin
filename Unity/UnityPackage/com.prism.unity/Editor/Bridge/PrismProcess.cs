@@ -62,6 +62,9 @@ namespace Prism.Unity.Editor
             if (!File.Exists(python))
                 throw new PrismCommandException(ErrorCodes.PrismUnavailable,
                     $"Prism was not found at {ctx.PrismRoot} (missing {python}). Set EditorPrefs 'PrismUnity.PrismRoot' to the Prism folder.");
+            if (string.IsNullOrEmpty(ctx.PluginDir))
+                throw new PrismCommandException(ErrorCodes.PrismUnavailable,
+                    "The Prism Unity plugin was not found on this machine. Register it with Prism (tools/deploy_dev.ps1 or Prism Settings → Plugins), or set EditorPrefs 'PrismUnity.PluginDir'.");
             var launcher = LauncherPath(ctx.PluginDir);
             if (!File.Exists(launcher))
                 throw new PrismCommandException(ErrorCodes.PrismUnavailable, $"Prism Unity plugin launcher not found: {launcher}");
@@ -107,9 +110,13 @@ namespace Prism.Unity.Editor
             }
         }
 
-        /// <summary>Stops the Prism process this domain started (used by tests).</summary>
+        /// <summary>Test hook: called whenever StopOwnedProcess runs.</summary>
+        public static System.Action StopObserver;
+
+        /// <summary>Stops the Prism process this domain started.</summary>
         public static void StopOwnedProcess()
         {
+            StopObserver?.Invoke();
             lock (Lock)
             {
                 try

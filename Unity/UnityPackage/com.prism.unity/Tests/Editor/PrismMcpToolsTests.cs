@@ -141,6 +141,49 @@ namespace Prism.Unity.Editor.Tests
             }
         }
 
+        [UnityTest]
+        public IEnumerator ImportResultIncludesPackage()
+        {
+            var r = new JObject[1];
+            yield return Run("prism_import", new JObject { ["entity"] = Lotus, ["product"] = "lotus_model", ["version"] = "v0001" }, r);
+            Assert.IsTrue((bool)r[0]["ok"], r[0].ToString());
+            var package = r[0]["result"]["package"];
+            Assert.IsNotNull(package, r[0].ToString());
+            Assert.AreEqual("Assets/Prism/Props/Lotus/lotus_model/lotus_model.prefab", (string)package["prefabPath"]);
+            Assert.AreEqual("Assets/Prism/Props/Lotus/lotus_model/lotus_model.asset", (string)package["definitionPath"]);
+            Assert.AreEqual("Props/Lotus/lotus_model", (string)package["addressableKey"]);
+
+            yield return Run("prism_list_imported", new JObject(), r);
+            Assert.AreEqual("Props/Lotus/lotus_model", (string)r[0]["result"][0]["package"]["addressableKey"], r[0].ToString());
+        }
+
+        [UnityTest]
+        public IEnumerator ConvertWithoutConfirmNeedsConfirmation()
+        {
+            var r = new JObject[1];
+            yield return Run("prism_import", new JObject { ["entity"] = Lotus, ["product"] = "lotus_model", ["version"] = "v0001" }, r);
+            yield return Run("prism_convert_definitions", new JObject { ["className"] = "TestItemDefinition" }, r);
+            Assert.IsFalse((bool)r[0]["ok"], r[0].ToString());
+            Assert.AreEqual("needs_confirmation", (string)r[0]["error"]["code"]);
+            Assert.AreEqual(1, (int)r[0]["error"]["details"]["count"]);
+            Assert.IsNotInstanceOf<TestItemDefinition>(AssetDatabase.LoadMainAssetAtPath("Assets/Prism/Props/Lotus/lotus_model/lotus_model.asset"));
+
+            yield return Run("prism_convert_definitions", new JObject { ["className"] = "TestItemDefinition", ["confirm"] = true }, r);
+            Assert.IsTrue((bool)r[0]["ok"], r[0].ToString());
+            Assert.AreEqual(1, (int)r[0]["result"]["converted"]);
+            Assert.IsInstanceOf<TestItemDefinition>(AssetDatabase.LoadMainAssetAtPath("Assets/Prism/Props/Lotus/lotus_model/lotus_model.asset"));
+        }
+
+        [UnityTest]
+        public IEnumerator GeneratePackagesReturnsCount()
+        {
+            var r = new JObject[1];
+            yield return Run("prism_import", new JObject { ["entity"] = Lotus, ["product"] = "lotus_model", ["version"] = "v0001" }, r);
+            yield return Run("prism_generate_packages", new JObject(), r);
+            Assert.IsTrue((bool)r[0]["ok"], r[0].ToString());
+            Assert.AreEqual(0, (int)r[0]["result"]["generated"], "import already packaged it");
+        }
+
         [Test]
         public void EveryToolHasDescriptionAndObjectSchema()
         {
@@ -149,6 +192,7 @@ namespace Prism.Unity.Editor.Tests
             {
                 "prism_list_products", "prism_list_versions", "prism_list_imported", "prism_import", "prism_update",
                 "prism_check_updates", "prism_save_version", "prism_open_scene_version", "prism_playblast", "prism_list_cameras",
+                "prism_generate_packages", "prism_convert_definitions",
             }, names);
             foreach (var t in PrismMcpTools.Tools)
             {
