@@ -55,6 +55,25 @@ def unity_client_from_env(environ=None):
     return UnityClient(int(port), token, project=environ.get("PRISM_UNITY_PROJECT") or None)
 
 
+DEFAULT_STYLE = "Blue Moon"
+
+
+def apply_prism_style(core):
+    """Give this Prism process the user's Prism style, as Prism Standalone does.
+
+    Inside Maya or Blender Prism's windows inherit the host's style; here Prism runs its own Qt
+    application, so without this its windows (product browser, dialogs) fall back to Qt's light
+    defaults while their icons and item colours are made for Prism's dark style.
+    """
+    try:
+        name = core.getConfig("globals", "standalone_stylesheet", config="user")
+    except Exception:
+        name = None
+    if name and core.setActiveStyleSheet(name):
+        return
+    core.setActiveStyleSheet(DEFAULT_STYLE)
+
+
 class Prism_Unity_Functions(object):
     def __init__(self, core, plugin):
         self.core = core
@@ -69,6 +88,7 @@ class Prism_Unity_Functions(object):
     @err_catcher(name=__name__)
     def startup(self, origin):
         origin.timer.stop()
+        apply_prism_style(self.core)
         origin.messageParent = QWidget()
         if self.core.useOnTop:
             origin.messageParent.setWindowFlags(

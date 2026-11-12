@@ -67,6 +67,23 @@ class PluginFunctionsTests(unittest.TestCase):
         self.assertEqual((client.port, client.token), (51234, "t"))
         self.assertIsNone(unity_client_from_env({}))
 
+    def _start(self, configured, available):
+        """Apply the style with a user stylesheet setting and the sheets Prism knows; returns the names tried."""
+        from Prism_Unity_Functions import apply_prism_style
+        applied = []
+        self.core.getConfig = lambda *args, **kwargs: configured
+        self.core.setActiveStyleSheet = lambda name: (applied.append(name), {"name": name} if name in available else None)[1]
+        apply_prism_style(self.core)
+        return applied
+
+    def test_startup_applies_the_users_prism_style(self):
+        # Prism's windows (product browser) are drawn for its dark style; without it they use Qt's light defaults.
+        self.assertEqual(self._start("Night", {"Night", "Blue Moon"}), ["Night"])
+
+    def test_startup_falls_back_to_default_style(self):
+        self.assertEqual(self._start(None, {"Blue Moon"}), ["Blue Moon"])
+        self.assertEqual(self._start("Removed", {"Blue Moon"}), ["Removed", "Blue Moon"])
+
 
 if __name__ == "__main__":
     unittest.main()
