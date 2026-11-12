@@ -115,11 +115,28 @@ namespace Prism.Unity.Editor.Packaging
         {
             var existing = AssetDatabase.LoadAssetAtPath<PrismAssetDefinition>(path);
             if (existing != null) return existing;
-            var type = Type.GetType(settings.DefinitionType ?? "") ?? typeof(PrismAssetDefinition);
-            if (!typeof(PrismAssetDefinition).IsAssignableFrom(type) || type.IsAbstract) type = typeof(PrismAssetDefinition);
-            var definition = (PrismAssetDefinition)ScriptableObject.CreateInstance(type);
+            var definition = (PrismAssetDefinition)ScriptableObject.CreateInstance(DefinitionType(settings));
             AssetDatabase.CreateAsset(definition, path);
             return definition;
+        }
+
+        /// <summary>The definition class chosen in Project Settings → Prism, or PrismAssetDefinition when it is unusable.</summary>
+        public static Type DefinitionType(PackagingSettings settings)
+        {
+            var type = Type.GetType(settings.DefinitionType ?? "");
+            return type != null && IsDefinitionClass(type) ? type : typeof(PrismAssetDefinition);
+        }
+
+        public static bool IsDefinitionClass(Type type) =>
+            type != null && typeof(PrismAssetDefinition).IsAssignableFrom(type) && !type.IsAbstract;
+
+        /// <summary>True when the record's prefab, definition and thumbnail all exist.</summary>
+        public static bool IsComplete(ImportRecord record)
+        {
+            var info = Describe(record);
+            return AssetDatabase.LoadAssetAtPath<GameObject>(info.PrefabPath) != null
+                   && AssetDatabase.LoadAssetAtPath<PrismAssetDefinition>(info.DefinitionPath) != null
+                   && AssetDatabase.LoadAssetAtPath<Texture2D>(info.ThumbnailPath) != null;
         }
 
         /// <summary>Prism's preview when there is one, else a single turntable frame of the model.</summary>

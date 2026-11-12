@@ -6,7 +6,7 @@ using UnityEngine;
 namespace Prism.Unity.Editor
 {
     /// <summary>Project Settings → Prism: where Prism is, which Prism project, and asset packaging.</summary>
-    static class PrismSettingsProvider
+    public static class PrismSettingsProvider
     {
         const string DefinitionBaseType = "Prism.Assets.PrismAssetDefinition, Prism.Assets";
 
