@@ -307,6 +307,15 @@ class FakeEntities(object):
     def setShotRange(self, entity, start, end):
         self.ranges[entity_label(entity)] = [start, end]
 
+    def setComment(self, filepath, comment):
+        for (_, _, _, p, data) in self.scenefiles:
+            if p == filepath:
+                data["comment"] = comment
+        return filepath
+
+    def omitEntity(self, entity, omit=True):
+        (self.omitted.add if omit else self.omitted.discard)(entity_label(entity))
+
     def setEntityPreview(self, entity, pixmap, width=250, height=141):
         path = self.getEntityPreviewPath(entity)
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -375,6 +384,33 @@ class FakeProducts(object):
     def getProductPreviewPath(self, path):
         return ""
 
+    # --- version management (Task 6) --------------------------------------------
+    def _from_file(self, path):
+        norm = path.replace("\\", "/")
+        for label, products in self.products.items():
+            for product, versions in products.items():
+                for v in versions + ["master"]:
+                    if "/%s/Export/%s/%s/" % (label, product, v) in norm:
+                        return label, product, v
+        return None, None, None
+
+    def updateMasterVersion(self, path):
+        label, product, version = self._from_file(path)
+        if not version:
+            return None
+        self.masters[(label, product)] = version
+        return path
+
+    def deleteMasterVersion(self, path, errorMsg=None, allowClear=True, allowRename=True):
+        label, product, _ = self._from_file(path)
+        if getattr(self, "fail_delete", False):
+            return False
+        self.masters.pop((label, product), None)
+        return True
+
+    def setComment(self, versionPath, comment):
+        self.info.setdefault(versionPath, {})["comment"] = comment
+
 
 class FakeMedia(object):
     def __init__(self, core):
@@ -392,7 +428,38 @@ class FakeMedia(object):
         return kinds
 
     def getVersionsFromIdentifier(self, identifier, locations=None):
-        return list(self.media[entity_label(identifier)][identifier["mediaType"]][identifier["identifier"]])
+        return [dict(v) for v in self.media[entity_label(identifier)][identifier["mediaType"]][identifier["identifier"]]]
+
+    def _versions_of(self, version):
+        for kinds in self.media.values():
+            for ids in kinds.values():
+                for vs in ids.values():
+                    if any(v.get("path") == version.get("path") for v in vs):
+                        return vs
+        return None
+
+    def getMasterVersionNumber(self, masterPath):
+        for kinds in self.media.values():
+            for ids in kinds.values():
+                for vs in ids.values():
+                    for v in vs:
+                        if v.get("path") == masterPath and v["version"] == "master":
+                            return v["content"]
+        return None
+
+    def updateMasterVersion(self, path=None, context=None, isFilepath=True, add=False, mediaType=None):
+        vs = self._versions_of(context)
+        vs[:] = [v for v in vs if v["version"] != "master"]
+        vs.append({"version": "master", "content": context["version"], "path": context["path"] + "_master"})
+        return context["path"] + "_master"
+
+    def setComment(self, versionPath, comment):
+        for kinds in self.media.values():
+            for ids in kinds.values():
+                for vs in ids.values():
+                    for v in vs:
+                        if v.get("path") == versionPath:
+                            v["comment"] = comment
 
 
 def make_project_core(name="Wellness"):
