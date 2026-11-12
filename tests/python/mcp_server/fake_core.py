@@ -54,6 +54,7 @@ class FakeCore(object):
         self.projectName = ""
         self.projectPath = ""
         self.useLocalFiles = False
+        self.localProjectPath = ""
         self.popups = []
         self.users = FakeUsers(self)
         self.projects = FakeProjects(self)
@@ -112,6 +113,8 @@ class FakeCore(object):
     def getEntityPath(self, entity=None, step=None, category=None, **kwargs):
         if entity.get("type") == "asset":
             base = os.path.join(self.projectPath, "03_Production", "Assets", *entity["asset_path"].split("/"))
+        elif entity.get("type") == "sequence":
+            return os.path.join(self.projectPath, "03_Production", "Shots", entity["sequence"])
         else:
             base = os.path.join(self.projectPath, "03_Production", "Shots", entity["sequence"], entity["shot"])
         if step:
@@ -315,6 +318,35 @@ class FakeEntities(object):
 
     def omitEntity(self, entity, omit=True):
         (self.omitted.add if omit else self.omitted.discard)(entity_label(entity))
+
+    # --- rename / delete (Task 7) --------------------------------------------------
+    fail_rename_after_first = False
+
+    def _locations(self, path):
+        out = [path]
+        if self.core.useLocalFiles:
+            out.append(path.replace(self.core.projectPath, self.core.localProjectPath))
+        return out
+
+    def _rename_folders(self, old, new):
+        for i, (src, dst) in enumerate(zip(self._locations(old), self._locations(new))):
+            if i == 1 and self.fail_rename_after_first:
+                from unity_bridge.protocol import BridgeError
+                raise BridgeError("needs_input", "Permission denied. Another programm uses files in the shotfolder.")
+            if os.path.exists(src):
+                os.rename(src, dst)
+
+    def renameShot(self, curShotData, newShotData, locations=None):
+        self._rename_folders(self.core.getEntityPath(entity=curShotData), self.core.getEntityPath(entity=newShotData))
+        self.shots = [(s, newShotData["shot"]) if (s, h) == (curShotData["sequence"], curShotData["shot"]) else (s, h) for s, h in self.shots]
+
+    def renameSequence(self, curSeqName, newSeqName, locations=None):
+        self._rename_folders(self.core.getEntityPath(entity={"type": "sequence", "sequence": curSeqName}),
+                             self.core.getEntityPath(entity={"type": "sequence", "sequence": newSeqName}))
+        self.shots = [(newSeqName if s == curSeqName else s, h) for s, h in self.shots]
+
+    def deleteShot(self, shotName):
+        raise AssertionError("the MCP must never call Prism's deleteShot (it loops forever on a locked file in noUI mode)")
 
     def setEntityPreview(self, entity, pixmap, width=250, height=141):
         path = self.getEntityPreviewPath(entity)
