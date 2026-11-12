@@ -31,9 +31,12 @@ def validate(entity, allowed=("asset", "shot")):
         raise BridgeError("bad_args", "entity type must be one of %s, not %r" % (", ".join(allowed), kind))
     clean = {"type": kind}
     if kind == "asset":
-        path = _text(entity.get("asset_path")).replace("\\", "/").strip("/")
-        if not path:
+        raw = entity.get("asset_path") if isinstance(entity.get("asset_path"), str) else ""
+        path = raw.replace("\\", "/").strip("/")
+        if not path.strip():
             raise BridgeError("bad_args", "An asset entity needs asset_path, e.g. Props/Lotus.")
+        if any(not part.strip() or part != part.strip() for part in path.split("/")):
+            raise BridgeError("bad_args", "asset_path %r has an empty folder name or a name with leading/trailing spaces." % raw)
         clean["asset_path"] = path
     elif kind == "shot":
         for key in ("sequence", "shot"):

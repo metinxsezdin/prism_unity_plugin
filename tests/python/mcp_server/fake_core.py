@@ -26,6 +26,18 @@ class FakeProjects(object):
     def getRecentProjects(self, includeCurrent=False):
         return [dict(p) for p in self.recent if includeCurrent or p["configPath"] != self.core.prismIni]
 
+    def getAssetDepartments(self):
+        return FakeEntities.DEPARTMENTS["asset"]
+
+    def getShotDepartments(self):
+        return FakeEntities.DEPARTMENTS["shot"]
+
+    def getAssetTaskPresets(self):
+        return FakeEntities.PRESETS["asset"]
+
+    def getShotTaskPresets(self):
+        return FakeEntities.PRESETS["shot"]
+
     def ensureProject(self, *args, **kwargs):
         return True
 
@@ -97,10 +109,16 @@ class FakeCore(object):
         self.popups.append(("error", text))
 
     # --- paths ----------------------------------------------------------------
-    def getEntityPath(self, entity=None, **kwargs):
+    def getEntityPath(self, entity=None, step=None, category=None, **kwargs):
         if entity.get("type") == "asset":
-            return os.path.join(self.projectPath, "03_Production", "Assets", *entity["asset_path"].split("/"))
-        return os.path.join(self.projectPath, "03_Production", "Shots", entity["sequence"], entity["shot"])
+            base = os.path.join(self.projectPath, "03_Production", "Assets", *entity["asset_path"].split("/"))
+        else:
+            base = os.path.join(self.projectPath, "03_Production", "Shots", entity["sequence"], entity["shot"])
+        if step:
+            base = os.path.join(base, "Scenefiles", step)
+            if category:
+                base = os.path.join(base, category)
+        return base
 
 
 def make_session(core):
@@ -215,6 +233,86 @@ class FakeEntities(object):
 
     def getDependencies(self, path):
         return list(self.deps.get(path, []))
+
+    # --- creation (Task 5) --------------------------------------------------------
+    DEPARTMENTS = {
+        "asset": [{"name": "Modeling", "abbreviation": "mod", "defaultTasks": ["Modeling"]},
+                  {"name": "Surfacing", "abbreviation": "surf", "defaultTasks": ["Surfacing"]}],
+        "shot": [{"name": "Animation", "abbreviation": "anm", "defaultTasks": ["Animation"]}],
+    }
+    PRESETS = {"asset": [{"name": "Prop", "departments": [{"name": "Modeling", "tasks": ["Sculpt", "Retopo"]},
+                                                           {"name": "Surfacing", "tasks": ["Surfacing"]}]}],
+               "shot": []}
+
+    def isValidAssetName(self, assetName):
+        return assetName not in ("Export", "Scenefiles", "Playblasts")
+
+    def createEntity(self, entity, dialog=None, frameRange=None, silent=False, description=None, preview=None, metaData=None):
+        if entity["type"] == "asset" and not self.isValidAssetName(self.getAssetNameFromPath(entity["asset_path"])):
+            self.core.popupQuestion("Invalid asset name. Continue anyway?")
+            return {}
+        if entity["type"] == "asset":
+            self.add_asset(entity["asset_path"])
+            if description:
+                self.descriptions[self.getAssetNameFromPath(entity["asset_path"])] = description
+        else:
+            self.add_shot(entity["sequence"], entity["shot"], frame_range=frameRange)
+        return {"entity": entity, "existed": False}
+
+    def _deps(self, entity_type):
+        return self.DEPARTMENTS["asset" if entity_type == "asset" else "shot"]
+
+    def getDepartmentAbbreviation(self, entity, department):
+        return next((d["abbreviation"] for d in self._deps(entity) if d["name"] == department), None)
+
+    def getLongDepartmentName(self, entity, abbreviation):
+        return next((d["name"] for d in self._deps(entity) if d["abbreviation"] == abbreviation), None)
+
+    def getDefaultTasksForDepartment(self, entity, department):
+        return next((list(d["defaultTasks"]) for d in self._deps(entity) if d["abbreviation"] == department), None)
+
+    def createDepartment(self, department, entity, stepPath="", createCat=True):
+        path = self.core.getEntityPath(entity=entity, step=department)
+        os.makedirs(path, exist_ok=True)
+        self.steps.setdefault(entity_label(entity), {}).setdefault(department, [])
+        if createCat:
+            for task in self.getDefaultTasksForDepartment(entity["type"], department) or []:
+                self.createCategory(entity, department, task)
+        return path
+
+    def createCategory(self, entity, step, category):
+        path = self.core.getEntityPath(entity=entity, step=step, category=category)
+        os.makedirs(path, exist_ok=True)
+        tasks = self.steps.setdefault(entity_label(entity), {}).setdefault(step, [])
+        if category not in tasks:
+            tasks.append(category)
+        return path
+
+    def createTasksFromPreset(self, entity, preset=None, presetName=None):
+        preset = preset or next(p for p in self.PRESETS[entity["type"]] if p["name"] == presetName)
+        paths = []
+        for dep in preset["departments"]:
+            abbr = self.getDepartmentAbbreviation(entity["type"], dep["name"])
+            self.createDepartment(abbr, entity, createCat=False)
+            for task in dep["tasks"]:
+                paths.append(self.createCategory(entity, abbr, task))
+        return paths
+
+    def setAssetDescription(self, assetName, description):
+        self.descriptions[assetName] = description
+
+    def setMetaData(self, entity=None, metaData=None, entities=None, metaDatas=None):
+        self.metadata[entity_label(entity)] = dict(metaData)
+
+    def setShotRange(self, entity, start, end):
+        self.ranges[entity_label(entity)] = [start, end]
+
+    def setEntityPreview(self, entity, pixmap, width=250, height=141):
+        path = self.getEntityPreviewPath(entity)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write("jpg")
+        return pixmap
 
 
 class FakeProducts(object):
