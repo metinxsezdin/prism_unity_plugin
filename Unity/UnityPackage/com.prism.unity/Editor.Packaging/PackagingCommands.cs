@@ -24,6 +24,53 @@ namespace Prism.Unity.Editor.Packaging
             }, true);
             PrismApi.MissingReported += ids => SetMissing(ids, true);
             PrismSettingsProvider.DefinitionClassChanged += t => OfferConversion(t);
+
+            // Claude's tools live in Prism.Unity.Editor, which does not reference this assembly.
+            PrismMcpTools.PackageInfoProvider = PackageJson;
+            PrismMcpTools.GeneratePackagesHandler = GenerateMissingAsync;
+            PrismMcpTools.ConvertDefinitionsHandler = ConvertForClaude;
+        }
+
+        // ---- Claude ----
+
+        static JObject PackageJson(string recordId)
+        {
+            var record = ImportRecord.Load(recordId);
+            if (record == null) return null;
+            var json = JObject.FromObject(PackageBuilder.Describe(record));
+            json["complete"] = PackageBuilder.IsComplete(record);
+            var definition = AssetDatabase.LoadAssetAtPath<PrismAssetDefinition>((string)json["definitionPath"]);
+            if (definition != null)
+            {
+                json["definitionClass"] = definition.GetType().FullName;
+                json["prismMissing"] = definition.prismMissing;
+            }
+            return json;
+        }
+
+        /// <summary>Without confirm: needs_confirmation with {count, paths, className}. With confirm: {converted, className}.</summary>
+        static JToken ConvertForClaude(string className, bool confirm)
+        {
+            var target = FindDefinitionClass(className);
+            var (count, paths) = PreviewConversion(target);
+            if (count > 0 && !confirm)
+                throw new PrismCommandException(ErrorCodes.NeedsConfirmation,
+                    $"{count} definition(s) would switch to {target.Name}. Ask the user, then call again with confirm=true.",
+                    new JObject { ["count"] = count, ["paths"] = new JArray(paths.Cast<object>().ToArray()), ["className"] = target.FullName });
+            return new JObject { ["converted"] = ConvertDefinitions(target), ["className"] = target.FullName };
+        }
+
+        /// <summary>A definition class by simple name, full name or assembly-qualified name.</summary>
+        public static Type FindDefinitionClass(string className)
+        {
+            var candidates = TypeCache.GetTypesDerivedFrom<PrismAssetDefinition>().Append(typeof(PrismAssetDefinition))
+                .Where(PackageBuilder.IsDefinitionClass).ToList();
+            var matches = candidates.Where(t => t.Name == className || t.FullName == className || t.AssemblyQualifiedName == className).ToList();
+            if (matches.Count == 1) return matches[0];
+            var known = string.Join(", ", candidates.Select(t => t.FullName));
+            throw new PrismCommandException(ErrorCodes.BadArgs, matches.Count == 0
+                ? $"No definition class '{className}'. Known: {known}"
+                : $"'{className}' is ambiguous; use the full name. Known: {known}");
         }
 
         // ---- missing in Prism ----

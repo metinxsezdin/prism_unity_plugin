@@ -48,7 +48,8 @@ List the versions of a product.
 
 ### prism_list_imported
 List what this Unity project imported from Prism.
-- **Returns:** `[{id, entity, product, version, assetPath, sourcePath, ...}]`. `id` is what `prism_update` takes.
+- **Returns:** `[{id, entity, product, version, assetPath, sourcePath, ..., package}]`. `id` is what `prism_update` takes.
+  `package` is described under [Asset packages](#asset-packages).
 
 ### prism_import
 Import a product version into `Assets/Prism/<entity>/<product>/<product>.<ext>`.
@@ -59,6 +60,7 @@ Import a product version into `Assets/Prism/<entity>/<product>/<product>.<ext>`.
   diff, and nothing changes until you call again with `"confirm": true`.
 - **Format change:** If the new version has a different file format (e.g. `.fbx` → `.obj`), the answer is `needs_confirmation`
   (`reason: format_changed`). Confirming creates a second asset; scenes and materials keep using the old one until switched.
+- **Returns:** `{record, updated, changes, package}`. Use `package.prefabPath` to place the model in a scene, not the raw model file.
 - **Example:** `{"entity":{"type":"asset","asset_path":"Props/Lotus"},"product":"lotus_model"}`
 
 ### prism_update
@@ -68,7 +70,8 @@ Update an imported product.
 
 ### prism_check_updates
 List imported products that have a newer version in Prism.
-- **Returns:** `[{id, current, latest, entity, product}]`
+- **Returns:** `[{id, current, latest, entity, product}]`, plus `{id, missing: true, entity, product}` for products that no longer
+  exist in Prism. A missing product's package is flagged `prismMissing` and kept; nothing is deleted. Tell the user.
 
 ### prism_save_version
 Save the active scene as a new Prism version.
@@ -105,11 +108,67 @@ Render and publish a playblast to Prism's media.
 List the cameras of the active scene.
 - **Returns:** `[{name, path}]`
 
+### prism_generate_packages
+Create the asset package for every imported product that has none (for example products imported before packaging was turned
+on). Existing packages are left untouched.
+- **Returns:** `{generated}`, the number of products packaged.
+
+### prism_convert_definitions
+Switch every package definition to a team definition class, a subclass of `Prism.Assets.PrismAssetDefinition`.
+- **Arguments:** `className` (simple name, full name or assembly-qualified name), optional `confirm`.
+- **Confirmation:** Without `confirm` the answer is `needs_confirmation` with `{count, paths, className}`. Tell the user how many
+  definitions change, then call again with `"confirm": true`.
+- **Kept:** Files, GUIDs, every reference to the definitions and fields with the same name keep their values. New fields start empty.
+- **Returns:** `{converted, className}`
+- **Class file:** The class must be in a script file of the same name (`WellnessItemDefinition.cs`), or Unity cannot save assets of it.
+
+## Asset packages
+
+Every imported product gets a package next to its model in `Assets/Prism/<entity>/<product>/`:
+
+| File | What it is | Who owns it |
+|---|---|---|
+| `<product>.fbx` | The model from Prism | Prism (overwritten on update) |
+| `<product>.prefab` | Prefab variant of the model | The team: created once, never overwritten. Add colliders, scripts and materials here. |
+| `<product>.asset` | Definition (ScriptableObject) | The team: Prism fields are refreshed on update, every other field is kept. |
+| `<product>_thumb.png` | Thumbnail from Prism's preview, else a rendered frame | Prism (rewritten on update) |
+
+`package` in tool results is `{prefabPath, definitionPath, addressableKey, thumbnailPath, complete, definitionClass, prismMissing, warning?}`.
+`warning` means the Addressable address was already used by another asset; that asset was left alone and this one was not registered.
+
+**Definition fields set by Prism:** `entityType`, `entityPath`, `product`, `version`, `contentVersion`, `addressableKey`, `prefab`
+(`AssetReferenceGameObject`), `thumbnail` (`AssetReferenceTexture2D`), `prismMissing`. `displayName` is set only while empty.
+
+**Addressables** (defaults; Project Settings → Prism can change them):
+- Prefab address `{entity}/{product}`, e.g. `Props/Lotus/lotus_model`; definition `…#definition`; thumbnail `…#thumb`.
+- Group `Prism {category}`, where category is the entity's first folder (`Prism Props`).
+- Labels `prism`, the category and the product name.
+- The catalog `Assets/Prism/PrismAssetCatalog.asset` lists every definition, at address `PrismAssetCatalog`.
+
+**Loading at runtime** (assembly reference `Prism.Assets`, `Unity.Addressables`, `Unity.ResourceManager`):
+
+```csharp
+using Prism.Assets;
+using UnityEngine.AddressableAssets;
+
+var catalog = await Addressables.LoadAssetAsync<PrismAssetCatalog>(PrismAssetCatalog.Address).Task;
+foreach (var item in catalog.ByCategory("Props"))
+{
+    var icon = await item.thumbnail.LoadAssetAsync().Task;
+    var go = await item.prefab.InstantiateAsync().Task;
+}
+// Or one product directly:
+var lotus = await Addressables.InstantiateAsync("Props/Lotus/lotus_model").Task;
+```
+
+When writing game code for a team definition class, use `catalog.OfType<WellnessItemDefinition>()`.
+
 ## Typical flow
 
 "Import the latest lotus, put it in the scene, give it a new material, take a turntable":
 
 1. `prism_import` with Props/Lotus and lotus_model.
-2. Instantiate the asset at `result.record.assetPath` and set up the material, using Unity MCP's own scene and asset tools.
+2. Instantiate the prefab at `result.package.prefabPath` (or `result.record.assetPath` when there is no package) and set up the
+   material on the prefab, using Unity MCP's own scene and asset tools.
 3. `prism_playblast` with `{"mode":"turntable","targetPaths":["<instance name>"]}`.
 4. If asked, `prism_save_version`.

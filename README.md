@@ -24,8 +24,9 @@ Tested on Windows 11 with Prism 2.1.2.1 and Unity 6000.5.6f1 (URP).
   - *Turntable* orbits the selected objects in an isolated preview scene, so your scene is never touched.
   - *Camera* records any scene camera and steps Timelines frame by frame.
   - Output is a PNG sequence or MP4, written as a versioned Prism media product.
+- **Package every product.** Each import also gets a prefab variant, a ScriptableObject definition, a thumbnail and Addressable entries, all listed in one catalog. See [Asset packages](#asset-packages).
 - **Work with Claude.**
-  - Ten MCP tools expose the same operations.
+  - Twelve MCP tools expose the same operations.
   - Calls coming from Claude never open a window. Anything that needs a decision comes back as a question for the user.
 
 ## How it works
@@ -90,8 +91,12 @@ You can also add the same folder from the plugins section of Prism's settings.
 
 1. In Prism, switch to the project the Unity project belongs to.
 2. Open **Prism Settings → DCC apps → Unity** and select the Unity project folder (the one containing `Assets`, `Packages` and `ProjectSettings`).
-3. Prism adds `com.prism.unity` to `Packages/manifest.json` and pins the current Prism project.
+3. Prism copies two packages into the project's `Packages/` folder and pins the current Prism project:
+   - `com.prism.unity`: the editor integration.
+   - `com.prism.assets`: the runtime types of asset packages. It pulls in Addressables 2.9.1, which ships with Unity 6000.5.
 4. Open the project in Unity. A **Prism** menu appears.
+
+The packages are copies, not links to this repository, so the project works on machines without the plugin, and they go into Git with the project. To upgrade, run step 2 again.
 
 If Prism is installed somewhere else, set the path once in Unity: `EditorPrefs.SetString("PrismUnity.PrismRoot", @"D:\Prism2")`.
 
@@ -100,8 +105,11 @@ If Prism is installed somewhere else, set the path once in Unity: `EditorPrefs.S
 Commit the imported assets and the plugin's records so everyone works with the same versions:
 
 - `Assets/Prism/**`, including `.meta` files
+- `Assets/AddressableAssetsData/**`: the Addressables settings and groups
+- `Packages/com.prism.unity/` and `Packages/com.prism.assets/`
 - `ProjectSettings/PrismUnity/**`:
   - `project.json`: the pinned Prism project
+  - `settings.json`: the packaging settings from Project Settings → Prism
   - `imports/`: one file per imported product
   - `scenes/`: one file per bound scene
 
@@ -122,13 +130,54 @@ Commit the imported assets and the plugin's records so everyone works with the s
 | Save Version | Saves the active scene as the next Prism version. The first save asks for the Prism asset and task; the department defaults to `Unity`. |
 | Save Comment... | Same, asking for a comment first. |
 | Import... | Opens Prism's product browser and imports the version you pick. |
-| Check for New Versions... | Lists imported products with newer versions and updates the ones you select. |
+| Check for New Versions... | Lists imported products with newer versions and updates the ones you select. Products that were removed from Prism are flagged, not deleted. |
+| Generate Missing Asset Packages | Packages products imported before packaging was turned on. Existing packages are left alone. |
+| Convert Definitions to Selected Class | Switches every definition to the class selected in the Project window (or the one in Project Settings → Prism), after asking. |
 | Playblast... | Turntable of the selection or recording of a camera, as PNG or MP4. |
 | Prism Settings... | Opens Prism's settings. |
 
 **For modellers:** keep object and material names stable between exports. Renaming `Stem` to `StemMain` in Maya means material assignments on `Stem` in Unity have to be redone, which is why the update stops and asks.
 
 **Scene versions:** a scene file references models, materials and shaders; it doesn't contain them. An old scene version opens correctly as long as those assets still exist in the project.
+
+## Asset packages
+
+Every imported product is packaged next to its model:
+
+```
+Assets/Prism/Props/Lotus/lotus_model/
+  lotus_model.fbx          the model; Prism overwrites it on every update
+  lotus_model.prefab       prefab variant of the model; yours, never overwritten
+  lotus_model.asset        definition (ScriptableObject); Prism fields refreshed, the rest kept
+  lotus_model_thumb.png    Prism's preview image, or a rendered frame when there is none
+Assets/Prism/PrismAssetCatalog.asset   every definition, sorted
+```
+
+**Use the prefab, not the model.** Colliders, scripts and material overrides belong on the prefab variant. A model update flows into it, and your additions stay.
+
+**Definitions.**
+- Prism writes `entityType`, `entityPath`, `product`, `version`, `contentVersion`, `addressableKey`, `prefab`, `thumbnail` and `prismMissing`.
+- `displayName` starts as the entity name, and the team can change it.
+- For game data such as price or unlock level, write a subclass of `Prism.Assets.PrismAssetDefinition` in a file of the same name, then pick it in **Project Settings → Prism**. New packages use it, and **Prism → Convert Definitions to Selected Class** switches the existing ones. Files and GUIDs stay the same, and fields with the same name keep their values.
+
+**Addressables.**
+- The prefab is addressable as `{entity}/{product}` (`Props/Lotus/lotus_model`), the definition as `…#definition` and the thumbnail as `…#thumb`.
+- Each category gets its own group (`Prism Props`), so content can be shipped per category.
+- Labels are `prism`, the category and the product.
+- The catalog's address is `PrismAssetCatalog`.
+- The first package creates the Addressables settings if the project has none.
+- If an address is already taken by another asset, that asset is left alone and a warning is logged.
+- An entry the team moved to another group or renamed keeps its group and address.
+
+```csharp
+var catalog = await Addressables.LoadAssetAsync<PrismAssetCatalog>(PrismAssetCatalog.Address).Task;
+foreach (var item in catalog.ByCategory("Props"))
+    await item.prefab.InstantiateAsync().Task;
+```
+
+**Removed in Prism.** When *Check for New Versions* finds that a product no longer exists in Prism, its definition gets `prismMissing = true`. Nothing is deleted. Re-importing the product clears the flag.
+
+**Project Settings → Prism** turns packaging on or off and sets the definition class and the address and group formats. With packaging off, imports behave as before: only the model is written.
 
 ## Using it with Claude
 
@@ -138,6 +187,9 @@ With Unity AI Assistant installed and the editor open, Claude gets these tools:
 - `prism_import`, `prism_update`, `prism_check_updates`
 - `prism_save_version`, `prism_open_scene_version`
 - `prism_playblast`, `prism_list_cameras`
+- `prism_generate_packages`, `prism_convert_definitions`
+
+Import, update and list results include each product's package (prefab path, definition path, Addressable key, thumbnail).
 
 A request like *"import the latest lotus, put it in the scene, give it a pink URP Lit material, take a turntable"* runs end to end.
 
@@ -167,7 +219,8 @@ The first call after opening Unity starts Prism and can take up to a minute. If 
 Unity/                          Prism plugin (pluginDirectory)
   Scripts/Prism_Unity_*.py      Prism app plugin hooks, launcher, installer
   Scripts/unity_bridge/         protocol, servers/clients, commands, dialogs
-  UnityPackage/com.prism.unity/ Unity editor package (Editor/, Editor.Mcp/, Tests/)
+  UnityPackage/com.prism.unity/ Unity editor package (Editor/, Editor.Mcp/, Editor.Packaging/, Tests/)
+  UnityPackage/com.prism.assets/ runtime types of asset packages (definition, catalog)
 TestProject/                    Unity 6000.5.6f1 URP project used by the tests
 tests/python/                   Prism-side unit tests (integration/ needs real Prism)
 fixtures/make_fbx.py            builds the test FBX files with Blender
