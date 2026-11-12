@@ -69,19 +69,22 @@ Unity editor                                   Prism process (Python + Qt)
 - Windows
 - Prism Pipeline 2.1.x installed in `C:\Program Files\Prism2`
 - Unity 6000.5 with URP
-- For Claude: the Unity AI Assistant package (`com.unity.ai.assistant`) in the Unity project and the `unity-mcp` server in your Claude client
+- For Claude in Unity: the Unity AI Assistant package (`com.unity.ai.assistant`) in the Unity project and the `unity-mcp` server in your Claude client
+- For Claude in Prism without Unity: Claude Code (the Prism MCP, see [Prism MCP](#prism-mcp-claude-without-unity))
 
 ## Installation
 
-### 1. Register the plugin with Prism (once per machine)
+### 1. Set up the machine (once per machine)
 
-The `Unity/` folder is the Prism plugin. Clone the repository, then run:
+Clone the repository, then double-click **`Install.bat`** in its root. It:
+- registers the `Unity/` folder (the Prism plugin) with Prism,
+- adds the Prism MCP to Claude Code for your Windows user,
+- checks that the Prism MCP can start Prism, and ends with a line such as `Prism MCP OK: Prism v2.1.2.1, user Ayşe, 3 projects`.
 
-```powershell
-tools\deploy_dev.ps1
-```
+It is safe to run again. `Uninstall.bat` undoes it. If Prism is not in `C:\Program Files\Prism2`, it asks for the folder once
+(or run `tools\install.ps1 -PrismRoot D:\Prism2`). If it says Prism's settings were not found, start Prism once and run it again.
 
-This adds `Unity/` to `%USERPROFILE%\Documents\Prism2\PluginPaths.json`. A backup of the original is kept as `PluginPaths.json.bak`, and `tools\deploy_dev.ps1 -Remove` undoes the change.
+Developers can register only the plugin with `tools\deploy_dev.ps1`: it adds `Unity/` to `%USERPROFILE%\Documents\Prism2\PluginPaths.json`. A backup of the original is kept as `PluginPaths.json.bak`, and `tools\deploy_dev.ps1 -Remove` undoes the change.
 
 Then restart Prism (tray icon → **Exit**, and start it again). Prism reads its plugin list only at startup, so a Prism that was already running won't show **Unity** under **DCC apps** until it restarts.
 
@@ -207,6 +210,37 @@ Claude's calls never open a window. When a decision belongs to the user, the too
 
 If the tools don't show up, use **Prism → Debug → Re-register Claude (MCP) Tools**.
 
+## Prism MCP (Claude without Unity)
+
+The Prism MCP gives Claude the Prism project itself, with Unity closed: what is in it, who published what, setting up assets,
+shots, departments and tasks for the Maya and Blender artists, and tidying up versions. It never opens a window.
+`Install.bat` sets it up; after that, ask Claude Code things like:
+
+- *"Lotus'a Modeling departmanı aç, Sculpt ve Retopo task'larıyla"*
+- *"Bu hafta kim ne publish etti?"*
+- *"Modeli olmayan asset'ler hangileri?"*
+- *"lotus_model master'ını v0003 yap"*
+
+What it can do:
+- **Look things up:** projects, assets and shots, departments and tasks, scene files, products and versions, playblasts and renders,
+  scene dependencies, and reports (recent activity, assets without a model, masters behind the latest version, tasks not started).
+- **Set up work:** create assets, shots, departments and tasks (also from Prism's task presets); set descriptions, metadata, preview
+  pictures and frame ranges.
+- **Manage versions:** set or delete masters, edit comments, omit or show entities, rename shots and sequences, delete shots.
+
+Rules it follows:
+- Anything that changes or removes existing data (a master, a comment, a rename, a delete) is shown to you first, and happens only
+  after you say yes. If someone else changed the same thing in the meantime, you are shown the new state again.
+- Deleting a shot moves it to `00_Pipeline/Trash` in the project; nothing is erased.
+- Renaming or deleting a shot lists the scenes that use it. Unity imports of it will show as removed from Prism.
+- Switching project switches only Claude; your own Prism keeps its project unless you ask Claude to change that too.
+- Every change is logged in `Documents\Prism2\PrismMcp.log`.
+
+Everyone on the team uses Prism **2.1.2.1**; the Prism MCP is written and tested against that version and warns on another one.
+After a `git pull`, restart your Claude Code session to load the new tools; running `Install.bat` again is not needed.
+
+[`PrismMcp/TOOLS.md`](PrismMcp/TOOLS.md) documents every tool, argument and error code.
+
 ## Troubleshooting
 
 | Message | Meaning |
@@ -227,8 +261,10 @@ Unity/                          Prism plugin (pluginDirectory)
   Scripts/unity_bridge/         protocol, servers/clients, commands, dialogs
   UnityPackage/com.prism.unity/ Unity editor package (Editor/, Editor.Mcp/, Editor.Packaging/, Tests/)
   UnityPackage/com.prism.assets/ runtime types of asset packages (definition, catalog)
+PrismMcp/                       Prism MCP server (server.py, prism_mcp/, TOOLS.md)
+Install.bat, Uninstall.bat      machine setup (tools/install.ps1)
 TestProject/                    Unity 6000.5.6f1 URP project used by the tests
-tests/python/                   Prism-side unit tests (integration/ needs real Prism)
+tests/python/                   Prism-side unit tests (integration/ needs real Prism; mcp_server/ for the Prism MCP)
 fixtures/make_fbx.py            builds the test FBX files with Blender
 tools/                          test runners, deploy script, test Prism project builder
 docs/                           design spec, implementation plan, acceptance results
@@ -237,7 +273,8 @@ docs/                           design spec, implementation plan, acceptance res
 Run the tests from PowerShell:
 
 ```powershell
-tools\run_py_tests.ps1                    # Prism side, Prism's bundled Python
+tools\run_py_tests.ps1                    # Prism side and Prism MCP, Prism's bundled Python
+$env:PRISM_UNITY_IT=1; tools\run_py_tests.ps1 -Pattern "test_*_it.py"   # against a real Prism and the test Prism project
 tools\run_unity_tests.ps1                 # Unity EditMode tests in TestProject
 tools\run_unity_tests.ps1 -Category E2E   # against a real Prism and the test Prism project
 tools\run_all_tests.ps1 -E2E              # everything

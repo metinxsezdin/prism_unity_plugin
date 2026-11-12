@@ -32,6 +32,12 @@ class ServerTests(unittest.TestCase):
                      "list_versions", "list_media", "get_dependencies", "report", "list_task_presets"):
             self.assertFalse(registry.TOOLS[name].mutating, name)
 
+    def test_tools_md_documents_every_tool(self):
+        server.load_tools()
+        with open(os.path.join(server.HERE, "TOOLS.md"), encoding="utf-8") as f:
+            headings = {line[4:].strip() for line in f if line.startswith("### ")}
+        self.assertEqual(sorted(set(registry.TOOLS) - headings), [])
+
     def test_check_reports_ok(self):
         core = FakeCore()
         core.make_project("Wellness", current=True)
