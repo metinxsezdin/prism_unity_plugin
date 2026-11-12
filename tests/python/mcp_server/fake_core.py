@@ -115,3 +115,194 @@ def call(session, _tool, **args):
     from prism_mcp import registry
 
     return registry.call_tool(session, _tool, args)[0]
+
+
+# --- entities, products, media (Task 3+) ------------------------------------------
+
+
+def entity_label(entity):
+    if entity.get("type") == "asset":
+        return entity["asset_path"].replace("\\", "/")
+    return "%s/%s" % (entity.get("sequence"), entity.get("shot"))
+
+
+class FakeEntities(object):
+    """In-memory project contents; add_asset/add_shot also create the entity folder."""
+
+    def __init__(self, core):
+        self.core = core
+        self.assets = []
+        self.shots = []
+        self.omitted = set()
+        self.steps = {}  # label -> {department: [tasks]}
+        self.scenefiles = []  # (label, department, task, path, data)
+        self.descriptions = {}  # asset name -> text
+        self.metadata = {}  # label -> dict
+        self.ranges = {}  # label -> [start, end]
+        self.deps = {}  # scenefile path -> [paths]
+
+    def add_asset(self, path, omitted=False):
+        self.assets.append(path)
+        os.makedirs(self.core.getEntityPath(entity={"type": "asset", "asset_path": path}), exist_ok=True)
+        if omitted:
+            self.omitted.add(path)
+
+    def add_shot(self, sequence, shot, frame_range=None):
+        self.shots.append((sequence, shot))
+        os.makedirs(self.core.getEntityPath(entity={"type": "shot", "sequence": sequence, "shot": shot}), exist_ok=True)
+        if frame_range:
+            self.ranges["%s/%s" % (sequence, shot)] = list(frame_range)
+
+    def add_scenefile(self, entity, department, task, filename, version="v0001", comment="", user="aka", deps=()):
+        folder = os.path.join(self.core.getEntityPath(entity=entity), "Scenefiles", department, task)
+        os.makedirs(folder, exist_ok=True)
+        path = os.path.join(folder, filename)
+        with open(path, "w") as f:
+            f.write("scene")
+        data = dict(entity, department=department, task=task, version=version, comment=comment, user=user,
+                    extension=os.path.splitext(filename)[1], filename=path)
+        self.scenefiles.append((entity_label(entity), department, task, path, data))
+        self.steps.setdefault(entity_label(entity), {}).setdefault(department, [])
+        if task not in self.steps[entity_label(entity)][department]:
+            self.steps[entity_label(entity)][department].append(task)
+        self.deps[path] = list(deps)
+        return path
+
+    def getAssets(self, path=None, depth=0, includeOmitted=False):
+        return [{"type": "asset", "asset_path": a.replace("/", "\\")} for a in self.assets if includeOmitted or a not in self.omitted]
+
+    def getShots(self, searchFilter="", locations=None, episode=None, sequence=None, includeOmitted=False):
+        out = []
+        for seq, shot in self.shots:
+            if not includeOmitted and "%s/%s" % (seq, shot) in self.omitted:
+                continue
+            out.append({"type": "shot", "sequence": seq, "shot": shot})
+        return out
+
+    def isEntityOmitted(self, entity):
+        return entity_label(entity) in self.omitted
+
+    def getSteps(self, entity):
+        return list(self.steps.get(entity_label(entity), {}))
+
+    def getCategories(self, entity, step=None):
+        return list(self.steps.get(entity_label(entity), {}).get(step, []))
+
+    def getScenefiles(self, entity=None, step=None, category=None, extensions=None, path=None):
+        return [p for (lbl, dep, task, p, _) in self.scenefiles
+                if lbl == entity_label(entity) and step in (None, dep) and category in (None, task)]
+
+    def getScenefileData(self, fileName, preview=False, getEntityFromPath=False):
+        for (_, _, _, p, data) in self.scenefiles:
+            if p == fileName:
+                return dict(data)
+        return {"filename": fileName}
+
+    def getAssetNameFromPath(self, path):
+        return os.path.basename(path.replace("\\", "/").rstrip("/"))
+
+    def getAssetDescription(self, assetName, projectPath=None):
+        return self.descriptions.get(assetName, "")
+
+    def getMetaData(self, entity, projectPath=None):
+        return dict(self.metadata.get(entity_label(entity), {}))
+
+    def getEntityPreviewPath(self, entity):
+        return os.path.join(self.core.projectPath, "00_Pipeline", "Assetinfo", os.path.basename(entity_label(entity)) + "_preview.jpg")
+
+    def getShotRange(self, entity, handles=False):
+        return self.ranges.get(entity_label(entity))
+
+    def getDependencies(self, path):
+        return list(self.deps.get(path, []))
+
+
+class FakeProducts(object):
+    """Product versions as real folders: <entity>/Export/<product>/<version>/<product>_<version>.fbx."""
+
+    def __init__(self, core):
+        self.core = core
+        self.products = {}  # label -> {product: [versions]}
+        self.info = {}  # version folder -> {comment, user, date}
+        self.masters = {}  # (label, product) -> content version
+
+    def add_product(self, entity, product, versions, comments=None, master=None):
+        label = entity_label(entity)
+        self.products.setdefault(label, {})[product] = list(versions)
+        for v in versions:
+            folder = self._folder(entity, product, v)
+            os.makedirs(folder, exist_ok=True)
+            with open(os.path.join(folder, "%s_%s.fbx" % (product, v)), "w") as f:
+                f.write("fbx")
+            self.info[folder] = {"comment": (comments or {}).get(v, ""), "user": "aka", "date": "01.11.26 10:00:00"}
+        if master:
+            self.masters[(label, product)] = master
+
+    def _folder(self, entity, product, version):
+        return os.path.join(self.core.getEntityPath(entity=entity), "Export", product, version)
+
+    def getProductsFromEntity(self, entity, locations=None):
+        return [{"product": p} for p in self.products.get(entity_label(entity), {})]
+
+    def getVersionsFromProduct(self, entity, product, locations="all"):
+        label = entity_label(entity)
+        out = []
+        for v in self.products.get(label, {}).get(product, []):
+            folder = self._folder(entity, product, v)
+            out.append(dict(entity, product=product, version=v, path=folder, locations={"global": folder}))
+        if (label, product) in self.masters:
+            folder = self._folder(entity, product, "master")
+            out.append(dict(entity, product=product, version="master", path=folder, locations={"global": folder}))
+        return out
+
+    def getVersionInfoFromVersion(self, version):
+        if version.get("version") == "master":
+            content = self.masters[(entity_label(version), version["product"])]
+            return self.info.get(self._folder(version, version["product"], content), {})
+        return self.info.get(version.get("path"), {})
+
+    def getPreferredFileFromVersion(self, version):
+        v = version["version"]
+        if v == "master":
+            v = self.masters[(entity_label(version), version["product"])]
+        return os.path.join(self._folder(version, version["product"], v), "%s_%s.fbx" % (version["product"], v))
+
+    def getMasterVersionNumber(self, masterPath, allowCache=True):
+        norm = masterPath.replace("\\", "/")
+        for (label, product), content in self.masters.items():
+            if norm.endswith("%s/Export/%s/master" % (label, product)):
+                return content
+        return None
+
+    def getProductPreviewPath(self, path):
+        return ""
+
+
+class FakeMedia(object):
+    def __init__(self, core):
+        self.core = core
+        self.media = {}  # label -> {kind: {identifier: [version dicts]}}
+
+    def add_media(self, entity, kind, identifier, versions):
+        self.media.setdefault(entity_label(entity), {}).setdefault(kind, {})[identifier] = versions
+
+    def getIdentifiersByType(self, entity, locations=None):
+        kinds = {"3d": [], "2d": [], "playblast": [], "external": []}
+        for kind, ids in self.media.get(entity_label(entity), {}).items():
+            for identifier in ids:
+                kinds[kind].append(dict(entity, identifier=identifier, mediaType=kind))
+        return kinds
+
+    def getVersionsFromIdentifier(self, identifier, locations=None):
+        return list(self.media[entity_label(identifier)][identifier["mediaType"]][identifier["identifier"]])
+
+
+def make_project_core(name="Wellness"):
+    """A FakeCore with an active project and empty entities/products/media."""
+    core = FakeCore()
+    core.make_project(name, current=True)
+    core.entities = FakeEntities(core)
+    core.products = FakeProducts(core)
+    core.mediaProducts = FakeMedia(core)
+    core.getScenefileData = core.entities.getScenefileData
+    return core

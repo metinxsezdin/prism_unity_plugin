@@ -1,5 +1,7 @@
 """Entity dicts in Prism's own shape, checked before they reach Prism."""
 
+import os
+
 from unity_bridge.protocol import BridgeError
 
 ENTITY_SCHEMA = {
@@ -63,3 +65,32 @@ def label(entity):
 
 def path(ctx, entity):
     return ctx.core.getEntityPath(entity=entity)
+
+
+def exists(ctx, entity):
+    entity_path = path(ctx, entity)
+    return bool(entity_path) and os.path.isdir(entity_path)
+
+
+def require(ctx, entity, allowed=("asset", "shot")):
+    """validate() plus: the project is reachable and the entity exists in it."""
+    clean = validate(entity, allowed)
+    ctx.require_project()
+    if not exists(ctx, clean):
+        raise BridgeError("bad_args", "The project has no %s %s." % (clean["type"], label(clean)))
+    return clean
+
+
+def from_prism(entity):
+    """Prism's entity dicts carry extra keys and backslashes; keep the shape the tools use."""
+    if entity.get("type") == "asset":
+        return {"type": "asset", "asset_path": (entity.get("asset_path") or "").replace("\\", "/")}
+    clean = {"type": "shot", "sequence": entity.get("sequence"), "shot": entity.get("shot")}
+    if entity.get("episode"):
+        clean["episode"] = entity["episode"]
+    return clean
+
+
+def page(items, limit):
+    limit = max(int(limit or 0), 1)
+    return {"items": items[:limit], "truncated": len(items) > limit}
