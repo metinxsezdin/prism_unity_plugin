@@ -1,0 +1,42 @@
+{
+  "trelloKey": "<trelloKey>",
+  "trelloToken": "<trelloToken>",
+  "boards": {
+    "<board short link>": "https://discord.com/api/webhooks/<id>/<token>"
+  },
+  "summary": {
+    "webhook": "https://discord.com/api/webhooks/<id>/<token>",
+    "time": "09:30"
+  },
+  "prism": {
+    "project": "",
+    "wipWebhook": "https://discord.com/api/webhooks/<id>/<token>",
+    "reviewWebhook": "https://discord.com/api/webhooks/<id>/<token>",
+    "reviewTag": "<review forumundaki 'Review bekliyor' etiketinin id'si>",
+    "trelloBoard": "<3D panosunun kısa linki>",
+    "reviewList": "Review",
+    "beforeReview": [
+      "Yapılacak",
+      "Modelleme",
+      "Texture",
+      "Unity'de"
+    ],
+    "guild": "<Discord sunucu id>",
+    "reviewChannel": "<#review forum kanal id>",
+    "mcp": "<prism_unity_plugin reposunun yolu>/PrismMcp",
+    "taskPreset": "",
+    "categories": {
+      "Prop": "Props",
+      "Ortam": "Environment",
+      "Karakter": "Characters",
+      "Bitki": "Vegetation",
+      "FX": "FX"
+    }
+  },
+  "cards": {
+    "channel": "<#kart-aç kanal id>",
+    "botToken": "<botToken>",
+    "board": "<3D panosunun kısa linki>",
+    "list": "Yapılacak"
+  }
+}
