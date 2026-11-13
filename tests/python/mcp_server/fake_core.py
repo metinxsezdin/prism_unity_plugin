@@ -1,5 +1,6 @@
 """A small stand-in for PrismCore, for the Prism MCP unit tests. Later tasks add to it."""
 
+import copy
 import os
 import tempfile
 
@@ -59,9 +60,13 @@ class FakeCore(object):
         self.users = FakeUsers(self)
         self.projects = FakeProjects(self)
         self.changeProjectCalls = []
+        self.shotinfo = {}  # Prism's shotinfo config: {"shotRanges": {seq: {shot: [s, e]}}, "shots": {seq: {shot: {...}}}}
 
     # --- config ---------------------------------------------------------------
-    def getConfig(self, cat=None, param=None, configPath=None, config=None, dft=None, location=None):
+    def getConfig(self, cat=None, param=None, configPath=None, config=None, dft=None, location=None, **kwargs):
+        if config == "shotinfo":
+            value = copy.deepcopy(self.shotinfo.get(cat) if cat else self.shotinfo)
+            return dft if value is None else value
         if configPath:
             if cat == "globals" and param == "project_name":
                 return os.path.basename(os.path.dirname(os.path.dirname(configPath)))
@@ -69,7 +74,13 @@ class FakeCore(object):
         value = self.config.get(cat, {}).get(param) if param else self.config.get(cat)
         return dft if value is None else value
 
-    def setConfig(self, cat=None, param=None, val=None, configPath=None, config=None, **kwargs):
+    def setConfig(self, cat=None, param=None, val=None, configPath=None, config=None, data=None, **kwargs):
+        if config == "shotinfo":
+            if data is not None:
+                self.shotinfo = copy.deepcopy(data)
+            else:
+                self.shotinfo.setdefault(cat, {})[param] = copy.deepcopy(val)
+            return
         self.config.setdefault(cat, {})[param] = val
 
     # --- projects -------------------------------------------------------------
@@ -158,8 +169,7 @@ class FakeEntities(object):
         self.steps = {}  # label -> {department: [tasks]}
         self.scenefiles = []  # (label, department, task, path, data)
         self.descriptions = {}  # asset name -> text
-        self.metadata = {}  # label -> dict
-        self.ranges = {}  # label -> [start, end]
+        self.metadata = {}  # asset label -> dict (shots keep theirs in core.shotinfo, like Prism)
         self.deps = {}  # scenefile path -> [paths]
 
     def add_asset(self, path, omitted=False):
@@ -172,7 +182,16 @@ class FakeEntities(object):
         self.shots.append((sequence, shot))
         os.makedirs(self.core.getEntityPath(entity={"type": "shot", "sequence": sequence, "shot": shot}), exist_ok=True)
         if frame_range:
-            self.ranges["%s/%s" % (sequence, shot)] = list(frame_range)
+            self.setShotRange({"type": "shot", "sequence": sequence, "shot": shot}, *frame_range)
+
+    @property
+    def ranges(self):
+        """label -> [start, end], read from the shotinfo config."""
+        out = {}
+        for seq, shots in (self.core.shotinfo.get("shotRanges") or {}).items():
+            for shot, frames in shots.items():
+                out["%s/%s" % (seq, shot)] = list(frames)
+        return out
 
     def add_scenefile(self, entity, department, task, filename, version="v0001", comment="", user="aka", deps=()):
         folder = os.path.join(self.core.getEntityPath(entity=entity), "Scenefiles", department, task)
@@ -226,13 +245,17 @@ class FakeEntities(object):
         return self.descriptions.get(assetName, "")
 
     def getMetaData(self, entity, projectPath=None):
+        if entity.get("type") == "shot":
+            shots = self.core.shotinfo.get("shots") or {}
+            return dict(shots.get(entity["sequence"], {}).get(entity["shot"], {}).get("metadata", {}))
         return dict(self.metadata.get(entity_label(entity), {}))
 
     def getEntityPreviewPath(self, entity):
         return os.path.join(self.core.projectPath, "00_Pipeline", "Assetinfo", os.path.basename(entity_label(entity)) + "_preview.jpg")
 
     def getShotRange(self, entity, handles=False):
-        return self.ranges.get(entity_label(entity))
+        frames = (self.core.shotinfo.get("shotRanges") or {}).get(entity.get("sequence"), {}).get(entity.get("shot"))
+        return list(frames) if frames else None
 
     def getDependencies(self, path):
         return list(self.deps.get(path, []))
@@ -313,10 +336,15 @@ class FakeEntities(object):
         self.descriptions[assetName] = description
 
     def setMetaData(self, entity=None, metaData=None, entities=None, metaDatas=None):
+        if entity.get("type") == "shot":
+            shots = self.core.shotinfo.setdefault("shots", {})
+            shots.setdefault(entity["sequence"], {}).setdefault(entity["shot"], {})["metadata"] = dict(metaData)
+            return
         self.metadata[entity_label(entity)] = dict(metaData)
 
     def setShotRange(self, entity, start, end):
-        self.ranges[entity_label(entity)] = [start, end]
+        ranges = self.core.shotinfo.setdefault("shotRanges", {})
+        ranges.setdefault(entity["sequence"], {})[entity["shot"]] = [start, end]
 
     def setComment(self, filepath, comment):
         for (_, _, _, p, data) in self.scenefiles:

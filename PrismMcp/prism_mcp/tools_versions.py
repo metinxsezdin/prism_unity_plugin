@@ -95,6 +95,11 @@ def set_master(ctx, entity, version, product=None, identifier=None, kind=None, c
         name = identifier
     if current == version:
         return {"changed": False, "master": version}
+    # Prism would copy nothing and still call it the master.
+    source = described["filepath"] if product else raw.get("path")
+    if not source or not os.path.exists(source):
+        raise BridgeError("source_unavailable", "The file of %s/%s %s is missing (%s); the master was not changed." % (
+            entities.label(entity), name, version, (source or "no file in the version folder").replace("\\", "/")))
     confirmation.require(ctx, "set_master", args,
                          "%s/%s master: %s → %s" % (entities.label(entity), name, current or "none", version),
                          {"from": current, "to": version}, current)

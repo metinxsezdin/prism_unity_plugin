@@ -53,6 +53,16 @@ class VersionToolsTests(unittest.TestCase):
     def test_set_master_already_master_is_noop(self):
         self.assertFalse(self._ok("set_master", entity=LOTUS, product="lotus_model", version="v0002")["changed"])
 
+    def test_set_master_missing_file_stops_before_asking(self):
+        # M4: Prism would copy nothing and still call it the master.
+        import os
+        path = self.core.products.getPreferredFileFromVersion(dict(LOTUS, product="lotus_model", version="v0003"))
+        os.remove(path)
+        e = self._err("set_master", entity=LOTUS, product="lotus_model", version="v0003")
+        self.assertEqual(e["code"], "source_unavailable")
+        self.assertIn("v0003", e["message"])
+        self.assertEqual(self.core.products.masters[("Props/Lotus", "lotus_model")], "v0002")
+
     def test_set_master_unknown_version_lists_versions(self):
         e = self._err("set_master", entity=LOTUS, product="lotus_model", version="v0009")
         self.assertEqual(e["code"], "bad_args")
@@ -63,9 +73,13 @@ class VersionToolsTests(unittest.TestCase):
         self.assertEqual(self._err("set_master", entity=LOTUS, product="lotus_model", identifier="pb", version="v0001")["code"], "bad_args")
 
     def test_set_master_for_media(self):
+        import os
+        folders = [os.path.join(self.core.root, "pb", v) for v in ("v0001", "v0002")]
+        for folder in folders:
+            os.makedirs(folder)
         self.core.mediaProducts.add_media(SH010, "playblast", "Animation_pb", [
-            {"version": "v0001", "path": "X:/pb/v0001", "comment": ""},
-            {"version": "v0002", "path": "X:/pb/v0002", "comment": ""}])
+            {"version": "v0001", "path": folders[0], "comment": ""},
+            {"version": "v0002", "path": folders[1], "comment": ""}])
         r, e = self._confirmed("set_master", entity=SH010, identifier="Animation_pb", version="v0002")
         self.assertEqual(e["details"]["changes"], {"from": None, "to": "v0002"})
         vs = self.core.mediaProducts.media["sq01/sh010"]["playblast"]["Animation_pb"]

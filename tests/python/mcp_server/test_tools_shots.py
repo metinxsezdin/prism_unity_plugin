@@ -131,6 +131,29 @@ class ShotToolsTests(unittest.TestCase):
         self.assertTrue(os.path.normcase(r["trash"]).startswith(os.path.normcase(os.path.join(self.core.projectPath, "00_Pipeline", "Trash"))))
         self.assertTrue(os.path.basename(r["trash"]).endswith("_sq01-sh010"))
 
+    def test_delete_shot_forgets_its_shot_info_and_keeps_a_copy_in_trash(self):
+        # M9: a new shot with the same name must not inherit the deleted one's range, metadata or preview.
+        self.core.entities.setMetaData(SH010, {"mood": {"value": "calm", "show": True}})
+        self.core.entities.add_shot("sq01", "sh020", frame_range=(1, 50))
+        preview = self.core.entities.getEntityPreviewPath(SH010)
+        os.makedirs(os.path.dirname(preview), exist_ok=True)
+        with open(preview, "wb") as f:
+            f.write(b"jpg")
+        e = self._token("delete_shot", entity=SH010)
+        self.assertEqual(e["details"]["changes"]["shotInfo"],
+                         {"frameRange": [1001, 1100], "metaData": {"mood": {"value": "calm", "show": True}}, "preview": True})
+        r = self._ok("delete_shot", entity=SH010, confirm=e["details"]["confirmToken"])
+        self.assertIsNone(self.core.entities.getShotRange(SH010))
+        self.assertEqual(self.core.entities.getMetaData(SH010), {})
+        self.assertFalse(os.path.exists(preview))
+        self.assertEqual(self.core.entities.getShotRange({"type": "shot", "sequence": "sq01", "shot": "sh020"}), [1, 50])
+        import json
+        with open(os.path.join(r["trash"], "shotinfo.json"), encoding="utf-8") as f:
+            kept = json.load(f)
+        self.assertEqual(kept["frameRange"], [1001, 1100])
+        self.assertEqual(kept["metaData"], {"mood": {"value": "calm", "show": True}})
+        self.assertTrue(os.path.isfile(os.path.join(r["trash"], os.path.basename(preview))))
+
     def test_delete_shot_never_calls_prism_delete(self):
         e = self._token("delete_shot", entity=SH010)
         self._ok("delete_shot", entity=SH010, confirm=e["details"]["confirmToken"])  # FakeEntities.deleteShot raises if called

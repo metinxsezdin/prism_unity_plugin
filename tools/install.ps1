@@ -22,11 +22,19 @@ function Test-PrismRoot([string]$root) {
     return $root -and (Test-Path (Join-Path $root "Python313\python.exe")) -and (Test-Path (Join-Path $root "Scripts\PrismCore.py"))
 }
 
+# A folder pasted from Explorer: no surrounding spaces or quotes, no trailing \ (it ends up in PRISM_ROOT for Claude Code).
+function Get-CleanFolder([string]$folder) {
+    $folder = $folder.Trim().Trim('"', "'").Trim()
+    if ($folder.Length -gt 3) { $folder = $folder.TrimEnd('\', '/') }
+    return $folder
+}
+
 # --- Prism ---------------------------------------------------------------------------------
 if (-not $PrismRoot) { $PrismRoot = if ($env:PRISM_ROOT) { $env:PRISM_ROOT } else { "C:\Program Files\Prism2" } }
+$PrismRoot = Get-CleanFolder $PrismRoot
 if (-not (Test-PrismRoot $PrismRoot)) {
     if ($NoPause) { Finish 1 "Prism was not found at $PrismRoot. Run again with -PrismRoot <the Prism folder>." }
-    $PrismRoot = Read-Host "Prism was not found at $PrismRoot. Enter the Prism folder (the one with Prism.exe)"
+    $PrismRoot = Get-CleanFolder (Read-Host "Prism was not found at $PrismRoot. Enter the Prism folder (the one with Prism.exe)")
     if (-not (Test-PrismRoot $PrismRoot)) { Finish 1 "Prism was not found at $PrismRoot." }
 }
 $python = Join-Path $PrismRoot "Python313\python.exe"
@@ -69,8 +77,16 @@ if (-not $claude) {
 if (-not $Remove -and -not $SkipCheck) {
     Write-Host "Checking that the Prism MCP can start Prism (this can take a minute)..."
     $env:PRISM_ROOT = $PrismRoot
-    $result = & $python $server --check 2>$null
-    $code = $LASTEXITCODE
+    # The check prints UTF-8; PowerShell reads a program's output with the console code page (OEM, e.g. 857),
+    # which would turn "Ayşe" into "Ay┼şe".
+    $consoleEncoding = $null
+    try { $consoleEncoding = [Console]::OutputEncoding; [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
+    try {
+        $result = & $python $server --check 2>$null
+        $code = $LASTEXITCODE
+    } finally {
+        if ($consoleEncoding) { try { [Console]::OutputEncoding = $consoleEncoding } catch { } }
+    }
     Write-Host ($result -join "`n")
     if ($code -ne 0) { Finish 1 "The Prism MCP is installed but cannot use Prism yet; fix the problem above and run Install.bat again." }
 }

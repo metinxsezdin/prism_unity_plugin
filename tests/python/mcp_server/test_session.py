@@ -151,6 +151,33 @@ class SessionTests(unittest.TestCase):
         self.assertTrue(lines[0]["outcome"]["ok"])
         self.assertIn("time", lines[0])
 
+    def test_audit_keeps_the_result(self):
+        # M2: where the trash went and what was renamed must be in the log, not only "ok".
+        from prism_mcp import registry
+
+        session = make_session(FakeCore())
+        registry.call_tool(session, "touch", {"what": "sh010"},
+                           tools=self._mutating_tools(lambda ctx, what: {"trash": "P:/00_Pipeline/Trash/x", "folders": ["a"]}))
+        with open(session.audit_path, encoding="utf-8") as f:
+            line = json.loads(f.readline())
+        self.assertEqual(line["outcome"]["result"], {"trash": "P:/00_Pipeline/Trash/x", "folders": ["a"]})
+
+    def test_audit_keeps_error_details_and_shortens_huge_results(self):
+        from prism_mcp import registry
+
+        session = make_session(FakeCore())
+
+        def stopped(ctx):
+            raise BridgeError("internal", "stopped halfway", {"renamed": ["a"], "remaining": ["b"]})
+
+        registry.call_tool(session, "touch", {}, tools=self._mutating_tools(stopped))
+        registry.call_tool(session, "touch", {}, tools=self._mutating_tools(lambda ctx: {"items": ["x" * 100] * 500}))
+        with open(session.audit_path, encoding="utf-8") as f:
+            failed, huge = [json.loads(line) for line in f]
+        self.assertEqual(failed["outcome"]["details"], {"renamed": ["a"], "remaining": ["b"]})
+        self.assertLess(len(json.dumps(huge)), 6000)
+        self.assertTrue(huge["outcome"]["resultTruncated"])
+
     def test_needs_confirmation_is_not_audited(self):
         from prism_mcp import registry
 

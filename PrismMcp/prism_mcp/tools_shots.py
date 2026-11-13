@@ -1,8 +1,11 @@
 """Renaming shots and sequences, and deleting shots into the project's Trash folder."""
 
 import datetime
+import json
+import logging
 import os
 import re
+import shutil
 
 from unity_bridge.protocol import BridgeError
 
@@ -80,6 +83,44 @@ def _renamed_names(folders, old, new):
                           "Pick a name that is not part of other names, or rename by hand in Prism." % (old, ", ".join(sorted(set(partial))[:5])),
                           {"partialMatches": sorted(set(partial))[:20]})
     return renames
+
+
+def _shot_info(core, entity):
+    """What Prism keeps about the shot outside its folders: frame range, metadata, preview image."""
+    return {"frameRange": core.entities.getShotRange(entity), "metaData": core.entities.getMetaData(entity) or {},
+            "preview": os.path.isfile(core.entities.getEntityPreviewPath(entity))}
+
+
+def _pop(container, sequence, shot):
+    """Remove container[sequence][shot] (and an emptied sequence); the removed value or None."""
+    shots = container.get(sequence) if isinstance(container, dict) else None
+    if not isinstance(shots, dict) or shot not in shots:
+        return None
+    value = shots.pop(shot)
+    if not shots:
+        container.pop(sequence)
+    return value
+
+
+def _forget_shot_info(core, entity, trash):
+    """Drop the shot from Prism's shotinfo config, so a new shot of the same name starts clean; a copy goes to trash."""
+    info = core.getConfig(config="shotinfo", allowCache=False) or {}
+    sequence, shot = entity["sequence"], entity["shot"]
+    ranges = info.get("shotRanges") or {}
+    if entity.get("episode") and isinstance(ranges.get(entity["episode"]), dict):
+        ranges = ranges[entity["episode"]]  # projects with episodes keep ranges per episode
+    frame_range = _pop(ranges, sequence, shot)
+    entry = _pop(info.get("shots") or {}, sequence, shot)
+    kept = {"entity": entity, "frameRange": frame_range, "metaData": (entry or {}).get("metadata", {}), "shotinfo": entry,
+            "restore": "Move the folders back and set the frame range and metadata again (set_shot_range, set_metadata)."}
+    os.makedirs(trash, exist_ok=True)
+    with open(os.path.join(trash, "shotinfo.json"), "w", encoding="utf-8") as f:
+        json.dump(kept, f, ensure_ascii=False, indent=2)
+    if frame_range is not None or entry is not None:
+        core.setConfig(data=info, config="shotinfo", updateNestedData=False)
+    preview = core.entities.getEntityPreviewPath(entity)
+    if os.path.isfile(preview):
+        shutil.move(preview, os.path.join(trash, os.path.basename(preview)))
 
 
 def _target(entity, new_name):
@@ -162,7 +203,7 @@ def delete_shot(ctx, entity, confirm=None):
         ctx, "delete_shot", {"entity": entity, "confirm": confirm},
         "%s is moved to the project's Trash folder. %s" % (entities.label(entity), _dependents_summary(dependents)),
         {"folders": [_slash(p) for _, p in folders], "trash": _slash(os.path.join(trash_root, name_pattern)),
-         "dependents": dependents, "note": UNITY_NOTE},
+         "shotInfo": ctx.run(lambda c: _shot_info(c, entity)), "dependents": dependents, "note": UNITY_NOTE},
         _state(folders))
 
     name = "%s_%s-%s" % (datetime.datetime.now().strftime("%Y%m%d-%H%M%S"), entity["sequence"], entity["shot"])
@@ -184,4 +225,12 @@ def delete_shot(ctx, entity, confirm=None):
             raise BridgeError("internal", "%s is open in another program; nothing was deleted. (%s)" % (_slash(src), e),
                               {"locked": _slash(src)})
         moved.append((src, dst))
-    return {"deleted": entity, "trash": _slash(os.path.join(trash_root, name)), "folders": [_slash(d) for _, d in moved]}
+    trash = os.path.join(trash_root, name)
+    answer = {"deleted": entity, "trash": _slash(trash), "folders": [_slash(d) for _, d in moved]}
+    try:
+        ctx.run(lambda c: _forget_shot_info(c, entity, trash))
+    except Exception as e:  # the folders are in the trash already; say what is left instead of failing
+        logging.getLogger(__name__).exception("could not clear the shot info of %s", entities.label(entity))
+        answer["warning"] = "The folders are in the trash, but Prism still keeps the frame range/metadata of %s: %s" % (
+            entities.label(entity), e)
+    return answer

@@ -40,6 +40,23 @@ class CreateToolsTests(unittest.TestCase):
         self.assertTrue(self._ok("create_entity", entity=SH020, frameRange=[1001, 1050])["created"])
         self.assertEqual(self.core.entities.ranges["sq01/sh020"], [1001, 1050])
 
+    def test_create_existing_says_what_it_ignored(self):
+        # M9: an existing asset keeps its description and tasks; the answer says so instead of staying silent.
+        r = self._ok("create_entity", entity=LOTUS, description="new text", taskPreset="Prop")
+        self.assertFalse(r["created"])
+        self.assertEqual(r["ignored"], ["description", "taskPreset"])
+        self.assertIn("set_description", r["note"])
+        self.assertIn("apply_task_preset", r["note"])
+        self.assertNotIn("Lotus", self.core.entities.descriptions)
+        self.assertNotIn("ignored", self._ok("create_entity", entity=LOTUS))
+
+    def test_create_existing_shot_ignores_frame_range_and_says_so(self):
+        self.core.entities.add_shot("sq01", "sh020", frame_range=(1001, 1050))
+        r = self._ok("create_entity", entity=SH020, frameRange=[1, 10])
+        self.assertEqual(r["ignored"], ["frameRange"])
+        self.assertIn("set_shot_range", r["note"])
+        self.assertEqual(self.core.entities.ranges["sq01/sh020"], [1001, 1050])
+
     def test_create_existing_omitted_asset_reports_omitted(self):
         self.core.entities.add_asset("Props/Old Vase", omitted=True)
         r = self._ok("create_entity", entity={"type": "asset", "asset_path": "Props/Old Vase"})

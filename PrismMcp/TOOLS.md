@@ -13,7 +13,8 @@ artists, and tidy up versions. Unity does not need to be open, and no tool ever 
 - **Project:** Claude starts in the user's current Prism project. `set_project` switches only Claude's session; the user's own
   Prism, Maya, Blender and Unity keep their project unless `persist: true` is confirmed.
 - **User:** changes are made as the machine's Prism user, and logged to `Documents\Prism2\PrismMcp.log` (one JSON line per
-  change: time, user, project, tool, arguments, outcome).
+  change: time, user, project, tool, arguments, outcome with the result, e.g. the trash folder; a failure keeps its details,
+  e.g. a stopped rename's `renamed`/`remaining`).
 
 Entities use Prism's own shape: `{"type":"asset","asset_path":"Props/Lotus"}` or `{"type":"shot","sequence":"sq01","shot":"sh010"}`.
 `rename` also takes `{"type":"sequence","sequence":"sq01"}`.
@@ -97,7 +98,8 @@ Playblasts, renders and other media. **Arguments:** `entity`. **Items:** `{kind,
 
 ## Setting up work (adds; never overwrites without asking)
 
-Creating something that exists already changes nothing and answers `created: false`.
+Creating something that exists already changes nothing and answers `created: false`. `create_entity` then also lists what it
+did not apply (`ignored`, e.g. `["description"]`) and which tool changes it (`note`).
 
 ### create_entity
 **Arguments:** `entity`; optional `description` (assets), `frameRange: [start, end]` (shots), `taskPreset` (see `list_task_presets`).
@@ -137,7 +139,8 @@ for confirmation (`changes: {field: {from, to}}`). Stored in Prism's `{value, sh
 
 ### set_master
 Make a version the master. **Arguments:** `entity`, `version`, and either `product` or `identifier` (media; optional `kind`), `confirm`.
-`changes: {from, to}`. Already the master: `{changed: false}` without a question.
+`changes: {from, to}`. Already the master: `{changed: false}` without a question. When the version's file is missing,
+`source_unavailable` and nothing changes.
 
 ### delete_master
 Remove a product's master (a copy of one version; the version itself stays). **Arguments:** `entity`, `product`, `confirm`.
@@ -167,5 +170,8 @@ Rename a shot or a sequence. **Arguments:** `entity`, `newName`, `confirm`. Asse
 ### delete_shot
 Move a shot's folders into the project's Trash: `<project>/00_Pipeline/Trash/<YYYYMMDD-HHMMSS>_<sequence>-<shot>/global`
 (a local-files copy goes to the local project's own `00_Pipeline/Trash`). Nothing is erased; to undo, move the folder back.
-**Arguments:** `entity` (shot), `confirm`. The preview lists `dependents` and the Unity `note`, like `rename`. If a file inside is
-open, nothing moves. **Returns:** `{deleted, trash, folders}`.
+The shot's frame range, metadata and preview image are removed from Prism too, so a new shot with the same name starts clean;
+they are kept in the trash folder (`shotinfo.json`, the preview image) and can be set again with `set_shot_range`/`set_metadata`.
+**Arguments:** `entity` (shot), `confirm`. The preview lists `shotInfo` (what Prism forgets), `dependents` and the Unity `note`,
+like `rename`. If a file inside is open, nothing moves. **Returns:** `{deleted, trash, folders}`, plus `warning` if Prism's shot
+info could not be cleared.

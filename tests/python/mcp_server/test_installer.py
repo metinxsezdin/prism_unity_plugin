@@ -97,6 +97,35 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(code, 1, out)
         self.assertIn("Prism was not found", out)
 
+    def test_prism_root_with_trailing_backslash_or_quotes_is_cleaned(self):
+        # M3: paths pasted from Explorer often end in "\" or come with quotes.
+        for root in (prism_env.PRISM_ROOT + "\\", '"%s"' % prism_env.PRISM_ROOT, " %s " % prism_env.PRISM_ROOT):
+            code, out = self._run(prism_root=root)
+            self.assertEqual(code, 0, (root, out))
+            add = self._claude_calls()[-1]
+            self.assertIn("PRISM_ROOT=%s " % prism_env.PRISM_ROOT, add)
+            self.assertIn(os.path.join(prism_env.PRISM_ROOT, "Python313", "python.exe"), add)
+
+    @unittest.skipUnless(os.environ.get("PRISM_UNITY_IT") == "1", "set PRISM_UNITY_IT=1 (starts Prism)")
+    def test_check_line_keeps_turkish_characters(self):
+        # M3: --check prints UTF-8; PowerShell must not read it with the OEM code page.
+        env = dict(os.environ, USERPROFILE=self.home, PRISM_USER_PREFS=self.prefs, PATH=self.bin + ";" + SYSTEM_PATH,
+                   PRISM_USERNAME="Ayşe Çağlar")
+        env.pop("PRISM_ROOT", None)
+        # What the console shows is the text PowerShell holds, so the Write-Host lines are saved as text, not bytes.
+        shown = os.path.join(self.bin, "shown.txt")
+        script = ("$r = & '%s' -NoPause -PrismRoot '%s' 6>&1; [IO.File]::WriteAllText('%s', ($r -join [char]10), [Text.Encoding]::UTF8)"
+                  % (os.path.join(REPO, "tools", "install.ps1"), prism_env.PRISM_ROOT, shown))
+        # Like a double-clicked Install.bat: a console of its own (with the OEM code page), hidden so no window shows.
+        hidden = subprocess.STARTUPINFO()
+        hidden.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        hidden.wShowWindow = 0
+        subprocess.run([POWERSHELL, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script], capture_output=True,
+                       timeout=300, env=env, creationflags=subprocess.CREATE_NEW_CONSOLE, startupinfo=hidden)
+        with open(shown, encoding="utf-8-sig") as f:
+            out = f.read()
+        self.assertIn("user Ayşe Çağlar", out, out)
+
     def test_npm_ps1_shim_is_not_used(self):
         # I6: PowerShell 5.1 drops "--" when it calls a .ps1, and -e then swallows the server command.
         with open(os.path.join(self.bin, "claude.ps1"), "w") as f:

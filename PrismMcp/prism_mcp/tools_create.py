@@ -90,7 +90,15 @@ def create_entity(ctx, entity, description=None, frameRange=None, taskPreset=Non
     if entities.is_category(ctx, entity):
         raise BridgeError("bad_args", "%s is a category folder that holds assets, not an asset." % entity["asset_path"])
     if entities.exists(ctx, entity):
-        return {"created": False, "entity": entity, "omitted": bool(ctx.run(lambda c: c.entities.isEntityOmitted(entity)))}
+        answer = {"created": False, "entity": entity, "omitted": bool(ctx.run(lambda c: c.entities.isEntityOmitted(entity)))}
+        given = (("description", description, "set_description"), ("frameRange", frameRange, "set_shot_range"),
+                 ("taskPreset", taskPreset, "apply_task_preset"))
+        ignored = [(name, other) for name, value, other in given if value is not None]
+        if ignored:
+            answer["ignored"] = [name for name, _ in ignored]
+            answer["note"] = "%s exists already and was not changed. To change it use %s." % (
+                entities.label(entity), ", ".join(other for _, other in ignored))
+        return answer
 
     def create(c):
         result = c.entities.createEntity(entity, frameRange=frame_range, silent=True, description=description)

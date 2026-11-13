@@ -50,6 +50,28 @@ class ShotsIntegrationTests(unittest.TestCase):
         self.assertFalse(os.path.exists(core.getEntityPath(entity=renamed)))
         self.assertTrue(os.path.isdir(os.path.join(trash, "global")))
 
+    def test_real_deleted_shot_leaves_no_range_or_metadata_behind(self):
+        # M9 against real Prism: its shotinfo config must not keep the deleted shot's range and metadata.
+        core = self.session.core
+        shot = {"type": "shot", "sequence": "sq_mcp", "shot": "sh_%s" % self.tag}
+        self.cleanup.append(core.getEntityPath(entity=shot))
+        self.assertTrue(call(self.session, "create_entity", entity=shot, frameRange=[1001, 1024])["result"]["created"])
+        self.assertTrue(call(self.session, "set_metadata", entity=shot, metaData={"mood": "calm"})["ok"])
+        self.assertEqual(core.entities.getShotRange(shot), [1001, 1024])
+
+        trash = self._confirmed("delete_shot", entity=shot)["trash"]
+        self.cleanup.append(trash)
+        core.configs.clearCache()
+        self.assertIsNone(core.entities.getShotRange(shot))
+        self.assertEqual(core.entities.getMetaData(shot), {})
+        self.assertIn("1001", open(os.path.join(trash, "shotinfo.json"), encoding="utf-8").read())
+
+        # A new shot with the same name starts clean.
+        self.assertTrue(call(self.session, "create_entity", entity=shot)["result"]["created"])
+        core.configs.clearCache()
+        self.assertIsNone(core.entities.getShotRange(shot))
+        self.assertEqual(core.entities.getMetaData(shot), {})
+
 
 if __name__ == "__main__":
     unittest.main()
