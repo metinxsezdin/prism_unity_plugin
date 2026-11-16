@@ -528,7 +528,9 @@ def prism_create_run(dry_run=False):
     if dry_run:
         print("would create in Prism:", [p for _, p in todo])
         return
-    answer = run_prism_create(conf, [{"asset_path": p, "taskPreset": conf.get("taskPreset", "")} for _, p in todo])
+    presets = conf.get("taskPreset") or ""  # one preset for all, or {Prism category: preset}
+    preset_of = (lambda p: presets.get(p.split("/")[0], "")) if isinstance(presets, dict) else (lambda p: presets)
+    answer = run_prism_create(conf, [{"asset_path": p, "taskPreset": preset_of(p)} for _, p in todo])
     if not answer.get("ok"):
         save_state(state)
         raise RuntimeError("Prism: %s" % answer.get("error"))

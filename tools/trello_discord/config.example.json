@@ -24,7 +24,12 @@
     "guild": "<Discord sunucu id>",
     "reviewChannel": "<#review forum kanal id>",
     "mcp": "<prism_unity_plugin reposunun yolu>/PrismMcp",
-    "taskPreset": "",
+    "taskPreset": {
+      "Props": "Prop",
+      "Environment": "Environment",
+      "Characters": "Character",
+      "Vegetation": "Prop"
+    },
     "categories": {
       "Prop": "Props",
       "Ortam": "Environment",

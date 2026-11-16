@@ -34,7 +34,7 @@ Etiketlenebilmesi için kişinin `bağla` ile eşleşmiş olması gerekir.
    - `summary.webhook`: günlük özetin gideceği kanalın webhook'u
    - `prism.project`: prototip Prism projesinin yolu (örn. `P:/Prototip`). Boş bırakılırsa Prism'le ilgili her şey kapalı kalır.
    - `prism.mcp`: bu reponun `PrismMcp` klasörü. Asset'ler Prism MCP'nin kendi araçlarıyla (`prism_create.py` üzerinden, pencere açmadan) oluşturulur.
-   - `prism.categories`: Trello tür etiketi → Prism kategorisi. `prism.taskPreset`: yeni asset'e uygulanacak Prism task preset'i (boşsa yok).
+   - `prism.categories`: Trello tür etiketi → Prism kategorisi. `prism.taskPreset`: yeni asset'e uygulanacak Prism task preset'i. Tek bir ad (hepsine aynı), Prism kategorisi → preset eşlemesi (örn. `{"Props": "Prop"}`; listede olmayan kategoriye preset uygulanmaz) ya da boş (hiçbirine).
    - `prism_create.py` dosyasını da `trello_discord.py`'nin yanına kopyala.
    - `cards.botToken`: Discord bot token'ı. Botta **Message Content Intent** açık olmalı.
 3. Dosyayı sadece kendi kullanıcın okuyabilsin: `icacls config.json /inheritance:r /grant:r "%USERNAME%:F"`
